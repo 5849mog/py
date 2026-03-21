@@ -818,25 +818,84 @@ mpl.rcParams['axes.unicode_minus'] = False
 
     await pyodide.runPythonAsync(code);
 
-    if (hasPlt) {
-      try {
-        const imgData = pyodide.runPython(`
-import matplotlib.pyplot as plt, io, base64
-buf = io.BytesIO()
-plt.savefig(buf, format='png', dpi=120, bbox_inches='tight')
-buf.seek(0)
-import base64
-base64.b64encode(buf.read()).decode('utf-8')
+    // ── 统一图像渲染：matplotlib / PIL Image / bytes / base64 字符串 ──
+    const b64List = pyodide.runPython(`
+import sys, io, base64 as _b64
+
+_images = []
+
+# 1. matplotlib：抓取所有未关闭的 figure
+try:
+    import matplotlib.pyplot as _plt
+    for _fig in _plt.get_fignums():
+        _buf = io.BytesIO()
+        _plt.figure(_fig).savefig(_buf, format='png', dpi=130, bbox_inches='tight')
+        _buf.seek(0)
+        _images.append(_b64.b64encode(_buf.read()).decode())
+    _plt.close('all')
+except Exception:
+    pass
+
+# 2. PIL Image：扫描用户命名空间里所有 Image 对象
+try:
+    from PIL.Image import Image as _PILImage
+    import __main__
+    _ns = {**vars(__main__)}
+    # 也搜索局部变量（通过 sys._getframe）
+    try:
+        import sys as _sys
+        _frame = _sys._getframe(0)
+        while _frame:
+            _ns.update(_frame.f_locals)
+            _frame = _frame.f_back
+    except Exception:
+        pass
+    _seen = set()
+    for _v in _ns.values():
+        if isinstance(_v, _PILImage) and id(_v) not in _seen:
+            _seen.add(id(_v))
+            _buf = io.BytesIO()
+            _v.save(_buf, format='PNG')
+            _buf.seek(0)
+            _images.append(_b64.b64encode(_buf.read()).decode())
+except Exception:
+    pass
+
+# 3. bytes 变量：如果是 PNG/JPEG 字节流直接渲染
+try:
+    for _v in list(_ns.values()):
+        if isinstance(_v, (bytes, bytearray)) and id(_v) not in _seen:
+            if _v[:8] in (b'\x89PNG\r\n\x1a\n', b'\xff\xd8\xff\xe0', b'\xff\xd8\xff\xe1'):
+                _seen.add(id(_v))
+                _images.append(_b64.b64encode(bytes(_v)).decode())
+except Exception:
+    pass
+
+_images
 `);
+
+    // 渲染所有收集到的图像
+    if (b64List && b64List.length > 0) {
+      for (const b64 of b64List) {
         const img = document.createElement('img');
-        img.src = 'data:image/png;base64,' + imgData;
-        img.style.cssText = 'max-width:100%;border-radius:8px;border:1px solid var(--border);margin-top:8px;';
+        img.src = 'data:image/png;base64,' + b64;
+        img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;display:block;';
+        img.onclick = () => {
+          // 点击图片全屏预览
+          const ov = document.createElement('div');
+          ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;';
+          const bi = document.createElement('img');
+          bi.src = img.src;
+          bi.style.cssText = 'max-width:100%;max-height:100%;border-radius:10px;';
+          ov.appendChild(bi);
+          ov.onclick = () => ov.remove();
+          document.body.appendChild(ov);
+        };
         const wrap = document.createElement('span');
         wrap.className = 'out-line image-out';
         wrap.appendChild(img);
         outputEl.appendChild(wrap);
-        pyodide.runPython('plt.close("all")');
-      } catch(e) {}
+      }
     }
 
     const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
