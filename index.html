@@ -650,12 +650,18 @@ async function initPyodide() {
       { label: '加载数值计算库 (numpy, scipy)...', pkgs: ['numpy', 'scipy', 'micropip'] },
       { label: '加载数据分析库 (pandas, statsmodels)...', pkgs: ['pandas', 'statsmodels'] },
       { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'] },
-      { label: '加载机器学习库 (sklearn, sympy, seaborn)...', pkgs: ['scikit-learn', 'sympy', 'seaborn'] },
+      { label: '加载机器学习库 (sklearn, sympy)...', pkgs: ['scikit-learn', 'sympy'] },
+      { label: '加载网络库 (networkx, pyodide-http)...', pkgs: ['networkx', 'pyodide-http'] },
     ];
     for (const g of pkgGroups) {
       setLoadMsg(g.label);
       await pyodide.loadPackage(g.pkgs);
     }
+
+    // ── 用 micropip 安装纯 Python 包 ──
+    try {
+      await pyodide.runPythonAsync("import micropip; await micropip.install(['seaborn'])");
+    } catch(_) {}
 
     // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
     document.querySelector('.loader-text').textContent = '正在加载中文字体...';
@@ -807,7 +813,7 @@ builtins.input = _custom_input
       'sympy','PIL','Pillow','statsmodels','micropip',
       'js','pyodide','_pyodide','pyodide_http',
       // 子模块（from X import Y 只提取 X，这里列出常见顶层名）
-      'cv2','skimage','plotly','bokeh','altair','seaborn','networkx','xgboost','lightgbm',
+      'cv2','skimage','plotly','bokeh','altair','seaborn','networkx','xgboost','lightgbm','requests','pyodide_http','pyodide-http',
       'requests','aiohttp','flask','fastapi','pydantic','attrs','tqdm',
       // ── 常见顶层别名 ──
       'np','pd','plt','sp','sns',
@@ -817,19 +823,28 @@ builtins.input = _custom_input
       appendOutput(`📦 检测到未预装的包，正在自动安装: ${toInstall.join(', ')}...\n`, 'info');
       // 优先用 loadPackage（Pyodide 原生编译包），失败再用 micropip（PyPI 纯 Python 包）
       for (const pkg of toInstall) {
+        // 先尝试 loadPackage（Pyodide 原生编译包）
+        let installed = false;
         try {
           await pyodide.loadPackage(pkg);
           appendOutput(`  ✓ ${pkg} 安装成功\n`, 'success');
-        } catch (_) {
+          installed = true;
+        } catch (_) {}
+
+        if (!installed) {
+          // 再尝试 micropip（PyPI 纯 Python 包）
+          // 注意：带连字符的包名（如 pyodide-http）micropip 无法处理，跳过
+          const pipName = pkg.replace(/-/g, '_');
           try {
-            await pyodide.runPythonAsync(`
-import micropip as _mp, sys as _sys
-if '${pkg}' not in _sys.modules:
-    await _mp.install('${pkg}')
-`);
+            await pyodide.runPythonAsync(
+              `import micropip as _mp, sys as _sys\n` +
+              `if '${pipName}' not in _sys.modules:\n` +
+              `    await _mp.install('${pkg}')\n`
+            );
             appendOutput(`  ✓ ${pkg} 安装成功 (PyPI)\n`, 'success');
+            installed = true;
           } catch (err2) {
-            appendOutput(`  ✗ ${pkg} 安装失败: ${err2.message||err2}\n`, 'stderr');
+            appendOutput(`  ✗ ${pkg} 安装失败（可能含 C 扩展或网络问题）\n`, 'stderr');
           }
         }
       }
