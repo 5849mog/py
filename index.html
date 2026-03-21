@@ -614,7 +614,7 @@ let inputResolve = null;
 async function initPyodide() {
   try {
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
-    await pyodide.loadPackage(['numpy', 'matplotlib', 'pandas']);
+    await pyodide.loadPackage(['numpy', 'matplotlib', 'pandas', 'micropip']);
 
     // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
     document.querySelector('.loader-text').textContent = '正在加载中文字体...';
@@ -714,6 +714,60 @@ builtins.input = _custom_input
   };
 
   try {
+    // ── 自动检测并安装缺失的包 ──
+    const importLines = code.match(/^(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gm) || [];
+    const pkgSet = new Set();
+    importLines.forEach(line => {
+      const m = line.match(/^(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+      if (m) pkgSet.add(m[1]);
+    });
+    // 标准库 + 已预装的包，无需尝试安装
+    const builtins = new Set([
+      // ── Python 标准库（完整） ──
+      'sys','os','io','re','math','time','json','random','datetime','collections',
+      'itertools','functools','pathlib','string','struct','hashlib','base64',
+      'copy','types','abc','enum','typing','dataclasses','contextlib','warnings',
+      'traceback','inspect','gc','weakref','threading','queue','subprocess',
+      'builtins','importlib','unittest','doctest','pprint','textwrap','shutil',
+      'tempfile','glob','fnmatch','stat','errno','signal','platform','sysconfig',
+      'asyncio','concurrent','multiprocessing','socket','ssl','http','urllib',
+      'email','html','xml','csv','sqlite3','decimal','fractions','statistics',
+      'array','bisect','heapq','operator','functools','cmath','numbers',
+      'codecs','unicodedata','locale','gettext','argparse','logging','unittest',
+      'difflib','readline','rlcompleter','zipfile','tarfile','gzip','bz2','lzma',
+      'zlib','pickle','shelve','marshal','dbm','venv','code','codeop',
+      'tokenize','token','ast','dis','compileall','py_compile','keyword',
+      'symtable','linecache','tokenize','colorsys','imghdr','wave','chunk',
+      'struct','select','selectors','socketserver','xmlrpc','ctypes','cffi',
+      'uuid','secrets','hmac','binascii','quopri','uu','netrc','ftplib',
+      'poplib','imaplib','smtplib','telnetlib','nntplib','calendar','sched',
+      'timezone','zoneinfo','profile','pstats','timeit','cProfile',
+      'trace','sys','atexit','faulthandler','site','sitecustomize',
+      // ── Pyodide 预装 / 内置 ──
+      'numpy','pandas','matplotlib','scipy','sklearn','sympy','PIL',
+      'micropip','js','pyodide','_pyodide','pyodide_http',
+      // ── 常见顶层别名 ──
+      'np','pd','plt','sp','sns',
+    ]);
+    const toInstall = [...pkgSet].filter(p => !builtins.has(p));
+    if (toInstall.length > 0) {
+      appendOutput(`📦 检测到未预装的包，正在自动安装: ${toInstall.join(', ')}...\n`, 'info');
+      await pyodide.runPythonAsync(`
+import micropip, sys
+_to_install = ${JSON.stringify(toInstall)}
+_failed = []
+for _pkg in _to_install:
+    if _pkg in sys.modules:
+        continue
+    try:
+        await micropip.install(_pkg)
+        print(f"  ✓ {_pkg} 安装成功")
+    except Exception as _e:
+        _failed.append(_pkg)
+        print(f"  ✗ {_pkg} 安装失败: {_e}")
+`);
+    }
+
     // Handle matplotlib + 确保每次运行都应用中文字体
     const hasPlt = code.includes('matplotlib') || code.includes('plt.');
     if (hasPlt) {
