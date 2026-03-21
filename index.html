@@ -485,7 +485,7 @@ print(f"π 的值: {math.pi:.10f}")
       <!-- Output panel -->
       <div id="output-panel">
         <div id="output-header">
-          <span id="output-title">输出</span>
+          <span id="output-title">输出</span><span id="output-linecount" style="font-size:10px;color:var(--text3);margin-left:6px;font-weight:400;"></span>
           <div class="output-spacer"></div>
           <div class="output-clear-btn" id="copy-output-btn" onclick="copyOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:3px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>复制</div>
           <div class="output-clear-btn" onclick="clearOutput()">清空</div>
@@ -504,12 +504,12 @@ print(f"π 的值: {math.pi:.10f}")
 
   <!-- Toolbar (above keyboard / at bottom) -->
   <div id="toolbar">
-    <button class="run-btn loading" id="run-btn" onclick="toggleRun()">
+    <button class="run-btn loading" id="run-btn" onclick="toggleRun()" title="运行 (Ctrl+Enter)">
       <svg id="run-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
       <span id="run-label">运行</span>
     </button>
     <div class="toolbar-spacer"></div>
-    <div class="toolbar-icon-btn" onclick="insertText('\t')" title="Tab">
+    <div class="toolbar-icon-btn" onclick="insertText('    ')" title="Tab 缩进">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
     </div>
     <div class="toolbar-icon-btn" onclick="insertText('()')" title="括号">
@@ -604,20 +604,58 @@ print(f"π 的值: {math.pi:.10f}")
 <script>
 // ── State ──
 let pyodide = null;
-let tabs = [{ name: 'main.py', code: document.getElementById('editor').value }];
 let activeTab = 0;
-let settings = { autoIndent: true, clearBeforeRun: true, showLines: true };
 let isRunning = false;
 let inputResolve = null;
+const _defSettings = { autoIndent: true, clearBeforeRun: true, showLines: true, fontSize: 13 };
+let settings = (() => {
+  try { return Object.assign({}, _defSettings, JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')); }
+  catch(_) { return { ..._defSettings }; }
+})();
+function saveSettings() {
+  try { localStorage.setItem('pyrunner_settings', JSON.stringify(settings)); } catch(_) {}
+}
+
+// ── 持久化（localStorage）──
+function saveState() {
+  try {
+    tabs[activeTab].code = document.getElementById('editor').value;
+    localStorage.setItem('pyrunner_tabs', JSON.stringify(tabs));
+    localStorage.setItem('pyrunner_active', activeTab);
+  } catch(_) {}
+}
+function loadState() {
+  try {
+    const saved = localStorage.getItem('pyrunner_tabs');
+    if (saved) return { tabs: JSON.parse(saved), active: parseInt(localStorage.getItem('pyrunner_active')||'0') };
+  } catch(_) {}
+  return null;
+}
+const _savedState = loadState();
+let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: document.getElementById('editor').value }];
+if (_savedState) {
+  activeTab = Math.min(_savedState.active, tabs.length - 1);
+  document.getElementById('editor').value = tabs[activeTab].code;
+}
+// 每 3 秒自动保存
+setInterval(saveState, 3000);
 
 // ── Pyodide init ──
 async function initPyodide() {
   try {
+    const setLoadMsg = (m) => { const el = document.querySelector('.loader-text'); if(el) el.textContent = m; };
+    setLoadMsg('正在初始化 Python 运行时...');
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
-    await pyodide.loadPackage([
-      'numpy', 'matplotlib', 'pandas', 'scipy', 'micropip',
-      'scikit-learn', 'Pillow', 'sympy', 'statsmodels',
-    ]);
+    const pkgGroups = [
+      { label: '加载数值计算库 (numpy, scipy)...', pkgs: ['numpy', 'scipy', 'micropip'] },
+      { label: '加载数据分析库 (pandas, statsmodels)...', pkgs: ['pandas', 'statsmodels'] },
+      { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'] },
+      { label: '加载机器学习库 (sklearn, sympy, seaborn)...', pkgs: ['scikit-learn', 'sympy', 'seaborn'] },
+    ];
+    for (const g of pkgGroups) {
+      setLoadMsg(g.label);
+      await pyodide.loadPackage(g.pkgs);
+    }
 
     // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
     document.querySelector('.loader-text').textContent = '正在加载中文字体...';
@@ -688,14 +726,14 @@ async function runCode() {
   const t0 = performance.now();
   let outputEl = document.getElementById('output-content');
 
-  // Redirect stdout/stderr
-  pyodide.globals.set('__input_prompt__', null);
-  pyodide.runPython(`
+  // Redirect stdout/stderr（只注册一次）
+  if (!window._captureInstalled) {
+    window._captureInstalled = true;
+    pyodide.runPython(`
 import sys, io
 class _Capture(io.TextIOBase):
     def __init__(self, kind):
         self.kind = kind
-        self.buf = ""
     def write(self, s):
         import js
         js._pyrunner_write(self.kind, s)
@@ -704,11 +742,10 @@ class _Capture(io.TextIOBase):
 sys.stdout = _Capture('stdout')
 sys.stderr = _Capture('stderr')
 `);
-
-  window._pyrunner_write = (kind, s) => appendOutput(s, kind === 'stderr' ? 'stderr' : null);
+    window._pyrunner_write = (kind, s) => appendOutput(s, kind === 'stderr' ? 'stderr' : null);
+  }
 
   // Override input()
-  pyodide.globals.set('__builtins__', pyodide.globals.get('__builtins__'));
   pyodide.runPython(`
 import builtins
 _orig_input = builtins.input
@@ -769,8 +806,9 @@ builtins.input = _custom_input
       'numpy','pandas','matplotlib','scipy','sklearn','scikit_learn',
       'sympy','PIL','Pillow','statsmodels','micropip',
       'js','pyodide','_pyodide','pyodide_http',
-      'scipy.fftpack','scipy.signal','scipy.linalg','scipy.stats',
-      'sklearn.linear_model','sklearn.preprocessing',
+      // 子模块（from X import Y 只提取 X，这里列出常见顶层名）
+      'cv2','skimage','plotly','bokeh','altair','seaborn','networkx','xgboost','lightgbm',
+      'requests','aiohttp','flask','fastapi','pydantic','attrs','tqdm',
       // ── 常见顶层别名 ──
       'np','pd','plt','sp','sns',
     ]);
@@ -820,7 +858,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 
     // ── 统一图像渲染（matplotlib / Plotly / PIL / bytes）──
     // 把所有 Python 探测逻辑注册为全局函数，一次注册多次可复用
-    // ── 始终重新注册收集函数（每次运行确保最新）──
+    // ── 只注册一次收集函数 ──
+    if (!window._collectInstalled) { window._collectInstalled = true;
     pyodide.runPython([
       "import sys as _sys, io as _io, base64 as _b64",
       "",
@@ -885,6 +924,15 @@ mpl.rcParams['axes.unicode_minus'] = False
       "            from PIL.Image import Image as _PI",
       "            if isinstance(v, _PI):",
       "                _images.append((_to_png_b64(v), 'png'))",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        # pandas DataFrame → HTML table",
+      "        try:",
+      "            import pandas as _pd",
+      "            if isinstance(v, _pd.DataFrame) and len(v) > 0:",
+      "                _html = v.to_html(max_rows=50, max_cols=20, border=0, classes=\'pr-table\')",
+      "                _images.append((\'__html__:\' + _html, \'html\'))",
       "                return",
       "        except Exception: pass",
       "",
@@ -953,7 +1001,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       "        _absorb(_v)",
       "",
       "    return [_images, _plotlys]",
-    ].join("\n"));
+    ].join("\n")); }
 
     // 把返回值传给 Python 侧并执行收集
     pyodide.globals.set("_pyrunner_retval", _userResult ?? null);
@@ -997,14 +1045,22 @@ mpl.rcParams['axes.unicode_minus'] = False
       }
     }
 
-    // ── 渲染静态图像（matplotlib / PIL / bytes）──
-    for (const b64 of b64List) {
-      // 验证 base64 有效且内容足够长
-      if (!b64 || b64.length < 100) continue;
+    // ── 渲染图像 / DataFrame 表格 ──
+    for (let _ri = 0; _ri < b64List.length; _ri++) {
+      const b64 = b64List[_ri], mime = mimeList[_ri] || 'png';
+      if (!b64) continue;
+      // DataFrame HTML 表格
+      if (b64.startsWith('__html__:')) {
+        const wrap = document.createElement('div');
+        wrap.className = 'out-line image-out';
+        wrap.style.cssText = 'overflow-x:auto;margin:10px 0;border:1px solid var(--border);border-radius:10px;';
+        wrap.innerHTML = `<style>.pr-table{border-collapse:collapse;font-family:var(--mono);font-size:12px;width:100%;}.pr-table th{background:var(--surface2);color:var(--text2);padding:6px 12px;text-align:left;border-bottom:1px solid var(--border);font-weight:500;}.pr-table td{padding:5px 12px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}.pr-table tr:last-child td{border-bottom:none;}.pr-table tr:hover td{background:var(--surface2);}</style>${b64.slice(9)}`;
+        outputEl.appendChild(wrap); continue;
+      }
+      if (b64.length < 100) continue;
       const img = document.createElement('img');
       img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;display:block;cursor:zoom-in;';
-      img.onerror = () => img.remove(); // 加载失败静默移除
-      const mime = mimeList[b64List.indexOf(b64)] || 'png';
+      img.onerror = () => img.remove();
       img.src = `data:image/${mime};base64,${b64}`;
       img.onclick = () => {
         const ov = document.createElement('div');
@@ -1019,10 +1075,10 @@ mpl.rcParams['axes.unicode_minus'] = False
         ov.onclick = () => ov.remove();
         document.body.appendChild(ov);
       };
-      const wrap = document.createElement('span');
-      wrap.className = 'out-line image-out';
-      wrap.appendChild(img);
-      outputEl.appendChild(wrap);
+      const wrap2 = document.createElement('span');
+      wrap2.className = 'out-line image-out';
+      wrap2.appendChild(img);
+      outputEl.appendChild(wrap2);
     }
 
     const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
@@ -1039,8 +1095,10 @@ mpl.rcParams['axes.unicode_minus'] = False
       const execIdx = lines.findIndex(l => l.includes('<exec>'));
       const relevant = execIdx >= 0 ? lines.slice(execIdx) : lines.slice(-8);
       appendOutput('\n' + relevant.join('\n'), 'stderr');
+      const lineMatch = raw.match(/line (\d+)/);
+      if (lineMatch) highlightErrorLine(parseInt(lineMatch[1]));
       setStatus('error', '出错');
-      setTimeout(() => setStatus('ready', '就绪'), 3000);
+      setTimeout(() => { setStatus('ready', '就绪'); clearErrorHighlight(); }, 4000);
     }
   }
   isRunning = false;
@@ -1076,16 +1134,35 @@ function appendOutput(text, cls) {
     }
   });
   scrollOutput();
+  trimOutputIfNeeded();
 }
 
 function clearOutput() {
   document.getElementById('output-content').innerHTML = '';
+  const lc = document.getElementById('output-linecount'); if(lc) lc.textContent='';
+}
+
+const MAX_OUTPUT_LINES = 2000;
+function trimOutputIfNeeded() {
+  const el = document.getElementById('output-content');
+  const spans = el.querySelectorAll('.out-line');
+  if (spans.length > MAX_OUTPUT_LINES) {
+    const notice = document.createElement('span');
+    notice.className = 'out-line info';
+    notice.textContent = `… 输出过多，已截断至最新 ${MAX_OUTPUT_LINES} 行 …\n`;
+    for (let i = 0; i < spans.length - MAX_OUTPUT_LINES; i++) spans[i].remove();
+    el.insertBefore(notice, el.firstChild);
+  }
 }
 
 function scrollOutput() {
   const s = document.getElementById('output-scroll');
   if (_outputRaf) return;
-  _outputRaf = requestAnimationFrame(() => { s.scrollTop = s.scrollHeight; _outputRaf = null; });
+  _outputRaf = requestAnimationFrame(() => {
+    s.scrollTop = s.scrollHeight; _outputRaf = null;
+    const lc = document.getElementById('output-linecount');
+    if (lc) { const n = document.getElementById('output-content').querySelectorAll('.out-line').length; lc.textContent = n > 0 ? n + ' 行' : ''; }
+  });
 }
 
 // ── Status ──
@@ -1098,14 +1175,30 @@ function setStatus(kind, text) {
   dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
 }
 
+// ── 错误行高亮 ──
+let _errLineEl = null;
+function highlightErrorLine(lineNo) {
+  clearErrorHighlight();
+  const ed = document.getElementById('editor');
+  if (lineNo < 1 || lineNo > ed.value.split('\n').length) return;
+  const lineH = parseFloat(getComputedStyle(ed).fontSize) * 1.75;
+  const top = 14 + (lineNo - 1) * lineH - ed.scrollTop;
+  const bar = document.createElement('div');
+  bar.style.cssText = 'position:absolute;left:0;right:0;height:'+lineH+'px;top:'+top+'px;background:var(--red-bg);border-left:3px solid var(--red);pointer-events:none;z-index:2;opacity:0.7;transition:opacity 0.3s;';
+  document.getElementById('code-wrap').appendChild(bar);
+  _errLineEl = bar;
+}
+function clearErrorHighlight() { if (_errLineEl) { _errLineEl.remove(); _errLineEl = null; } }
+
 // ── Editor helpers ──
-function insertText(text) {
+function insertText(text, cursorOffset) {
   const ed = document.getElementById('editor');
   const s = ed.selectionStart, e = ed.selectionEnd;
   const before = ed.value.substring(0, s);
   const after = ed.value.substring(e);
   ed.value = before + text + after;
-  const pos = s + Math.floor(text.length / 2);
+  // cursorOffset: 从插入点算起的偏移；undefined = 末尾
+  const pos = cursorOffset !== undefined ? s + cursorOffset : s + text.length;
   ed.setSelectionRange(pos, pos);
   ed.focus();
   updateLineNumbers();
@@ -1132,13 +1225,65 @@ document.getElementById('editor').addEventListener('scroll', () => {
   document.getElementById('line-numbers').scrollTop = document.getElementById('editor').scrollTop;
 });
 document.getElementById('editor').addEventListener('keydown', (e) => {
+  const ed = e.target;
+  const s = ed.selectionStart, end = ed.selectionEnd;
+
+  // Ctrl+Enter / Cmd+Enter → 运行
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault(); toggleRun(); return;
+  }
+
+  // Ctrl+/ → 切换行注释
+  if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    const lines = ed.value.split('\n');
+    let pos = 0, startLine = -1, endLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const lineEnd = pos + lines[i].length;
+      if (pos <= s && s <= lineEnd + 1) startLine = i;
+      if (pos <= end && end <= lineEnd + 1) endLine = i;
+      pos += lines[i].length + 1;
+    }
+    const allCommented = lines.slice(startLine, endLine+1).every(l => l.trimStart().startsWith('#'));
+    for (let i = startLine; i <= endLine; i++) {
+      if (allCommented) lines[i] = lines[i].replace(/^(\s*)# ?/, '$1');
+      else lines[i] = lines[i].replace(/^(\s*)/, '$1# ');
+    }
+    ed.value = lines.join('\n');
+    updateLineNumbers(); return;
+  }
+
+  // Tab → 4 空格，光标落末尾
   if (e.key === 'Tab') {
     e.preventDefault();
-    insertText('    ');
+    insertText('    '); return;
   }
+
+  // 括号 / 引号自动补全
+  const pairs = { '(':')', '[':']', '{':'}', '"':'"', "'":"'" };
+  if (pairs[e.key] && s === end) {
+    e.preventDefault();
+    insertText(e.key + pairs[e.key], 1); return;
+  }
+  // 右括号跳过（已有时不重复输入）
+  const closing = new Set([')', ']', '}']);
+  if (closing.has(e.key) && ed.value[s] === e.key) {
+    e.preventDefault();
+    ed.setSelectionRange(s+1, s+1); return;
+  }
+  // 退格删除成对括号
+  if (e.key === 'Backspace' && s === end && s > 0) {
+    const open = ed.value[s-1], close = ed.value[s];
+    if (pairs[open] === close) {
+      e.preventDefault();
+      ed.value = ed.value.substring(0, s-1) + ed.value.substring(s+1);
+      ed.setSelectionRange(s-1, s-1);
+      updateLineNumbers(); return;
+    }
+  }
+
+  // Enter → 自动缩进
   if (e.key === 'Enter' && settings.autoIndent) {
-    const ed = e.target;
-    const s = ed.selectionStart;
     const lines = ed.value.substring(0, s).split('\n');
     const lastLine = lines[lines.length - 1];
     const indent = lastLine.match(/^(\s*)/)[1];
@@ -1151,6 +1296,17 @@ updateLineNumbers();
 
 // ── Tabs ──
 let tabCounter = 1;
+function startRenameTab(idx, div) {
+  const nameEl = div.querySelector('.tab-name'); if (!nameEl) return;
+  const old = tabs[idx].name;
+  const inp = document.createElement('input');
+  inp.value = old;
+  inp.style.cssText = 'width:80px;font-size:12px;font-family:var(--sans);font-weight:500;background:var(--surface3);border:1px solid var(--accent);border-radius:4px;padding:0 4px;color:var(--text);outline:none;';
+  nameEl.replaceWith(inp); inp.focus(); inp.select();
+  const commit = () => { const v = inp.value.trim()||old; tabs[idx].name = v.endsWith('.py')?v:v+'.py'; renderTabs(); saveState(); };
+  inp.onblur = commit;
+  inp.onkeydown = (e) => { if(e.key==='Enter'){e.preventDefault();inp.blur();} if(e.key==='Escape'){inp.value=old;inp.blur();} };
+}
 function addTab() {
   tabCounter++;
   tabs.push({ name: 'script' + tabCounter + '.py', code: '# 新文件\nprint("Hello, World!")\n' });
@@ -1184,6 +1340,7 @@ function renderTabs() {
     div.className = 'tab' + (i === activeTab ? ' active' : '');
     div.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:${i===activeTab?'var(--accent)':'var(--text3)'};display:inline-block;flex-shrink:0"></span>${t.name}<span class="tab-close" onclick="removeTab(event,${i})">×</span>`;
     div.addEventListener('click', () => switchTab(i));
+    div.addEventListener('dblclick', (ev) => { ev.stopPropagation(); startRenameTab(i, div); });
     bar.appendChild(div);
   });
   const add = document.createElement('div');
@@ -1220,6 +1377,8 @@ const SNIPPETS = [
   { icon: '📝', name: '文件读写', desc: '读取和写入文本文件', code: `# 写入文件\nwith open('data.txt', 'w', encoding='utf-8') as f:\n    for i in range(5):\n        f.write(f'第 {i+1} 行数据\\n')\n\n# 读取文件\nwith open('data.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\nprint(content)\n` },
   { icon: '🧮', name: '排序算法', desc: '快速排序实现', code: `def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    mid = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + mid + quicksort(right)\n\nimport random\ndata = [random.randint(1, 100) for _ in range(15)]\nprint("原始:", data)\nprint("排序:", quicksort(data))\n` },
   { icon: '🌐', name: 'JSON 处理', desc: '解析和生成 JSON', code: `import json\n\ndata = {\n    "name": "PyRunner",\n    "version": "1.0",\n    "features": ["运行代码", "可视化", "多文件"],\n    "author": {"name": "Claude", "year": 2024}\n}\n\njson_str = json.dumps(data, ensure_ascii=False, indent=2)\nprint("JSON 输出:")\nprint(json_str)\n\nparsed = json.loads(json_str)\nprint("\\n解析后:", parsed['features'])\n` },
+  { icon: '🎨', name: 'PIL 图像处理', desc: '生成分形图（Julia Set）', code: `import numpy as np\nfrom PIL import Image\n\nw, h = 600, 450\nc = complex(-0.7, 0.27015)\ny, x = np.ogrid[-1.2:1.2:h*1j, -1.6:1.6:w*1j]\nz = x + 1j * y\nout = np.zeros((h, w), dtype=np.uint8)\nfor i in range(200):\n    z = z**2 + c\n    out[np.abs(z) < 1000] = i\nImage.fromarray(out)\n` },
+  { icon: '📉', name: 'Plotly 交互图表', desc: '可缩放的折线图', code: `import plotly.graph_objects as go\nimport numpy as np\n\nx = np.linspace(0, 4*np.pi, 300)\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=x, y=np.sin(x), mode='lines', name='sin(x)', line=dict(color='#C96B3A', width=2)))\nfig.add_trace(go.Scatter(x=x, y=np.cos(x), mode='lines', name='cos(x)', line=dict(color='#1E5FA8', width=2)))\nfig.update_layout(title='正弦与余弦（可交互）', xaxis_title='x', yaxis_title='y', plot_bgcolor='#F8F9F9')\nfig\n` },
   { icon: '⏱️', name: '性能测量', desc: '测量代码运行时间', code: `import time\nimport random\n\ndef bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n\ndata = [random.randint(1, 1000) for _ in range(500)]\nstart = time.perf_counter()\nbubble_sort(data.copy())\nelapsed = time.perf_counter() - start\nprint(f"冒泡排序 500 个元素: {elapsed*1000:.2f} ms")\n` },
 ];
 
@@ -1263,11 +1422,13 @@ document.getElementById('settings-btn').onclick = () => {
 function applyFontSize(v) {
   document.getElementById('editor').style.fontSize = v + 'px';
   document.getElementById('line-numbers').style.fontSize = v + 'px';
+  settings.fontSize = parseInt(v); saveSettings();
 }
 function toggleSetting(key) {
   const map = { 'auto-indent': 'autoIndent', 'clear-before-run': 'clearBeforeRun', 'show-lines': 'showLines' };
   const k = map[key];
   settings[k] = !settings[k];
+  saveSettings();
   document.getElementById(key + '-toggle').classList.toggle('on', settings[k]);
   if (key === 'show-lines') {
     document.getElementById('line-numbers').style.display = settings.showLines ? '' : 'none';
@@ -1327,6 +1488,19 @@ async function copyCode() {
   if (ok) { flashCopyBtn('copy-code-btn'); showToast('已复制代码 \u2713'); }
   else showToast('复制失败，请手动选择文本');
 }
+
+// ── 应用已保存的设置 ──
+(function() {
+  applyFontSize(settings.fontSize);
+  document.getElementById('font-size-select').value = settings.fontSize;
+  if (!settings.showLines) {
+    document.getElementById('line-numbers').style.display = 'none';
+    document.getElementById('editor').style.paddingLeft = '14px';
+    document.getElementById('show-lines-toggle').classList.remove('on');
+  }
+  if (!settings.autoIndent) document.getElementById('auto-indent-toggle').classList.remove('on');
+  if (!settings.clearBeforeRun) document.getElementById('clear-before-run-toggle').classList.remove('on');
+})();
 
 // ── Start ──
 initPyodide();
