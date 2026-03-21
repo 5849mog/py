@@ -818,124 +818,120 @@ mpl.rcParams['axes.unicode_minus'] = False
 
     await pyodide.runPythonAsync(code);
 
-    // ── 统一图像渲染：matplotlib / PIL / bytes / Plotly ──
-    // 关键：Python 代码存入变量，不嵌入 JS 模板字符串，避免转义问题
-    const collectCode = [
-      "import sys, io, base64 as _b64",
-      "_images = []",
-      "_plotly_json = None",
-      "",
-      "# 1. matplotlib",
-      "try:",
-      "    import matplotlib.pyplot as _plt",
-      "    for _fn in _plt.get_fignums():",
-      "        _buf = io.BytesIO()",
-      "        _plt.figure(_fn).savefig(_buf, format='png', dpi=130, bbox_inches='tight')",
-      "        _buf.seek(0)",
-      "        _images.append(_b64.b64encode(_buf.read()).decode())",
-      "    _plt.close('all')",
-      "except Exception:",
-      "    pass",
-      "",
-      "# 2. Plotly figure",
-      "try:",
-      "    import plotly.io as _pio",
-      "    _frame = sys._getframe(0)",
-      "    _ns = {}",
-      "    while _frame:",
-      "        _ns.update(_frame.f_locals)",
-      "        _frame = _frame.f_back",
-      "    for _v in _ns.values():",
-      "        try:",
-      "            if hasattr(_v, 'to_json') and hasattr(_v, 'data') and hasattr(_v, 'layout'):",
-      "                _plotly_json = _v.to_json()",
-      "                break",
-      "        except Exception:",
-      "            pass",
-      "except Exception:",
-      "    pass",
-      "",
-      "# 3. PIL Image",
-      "try:",
-      "    from PIL.Image import Image as _PILImg",
-      "    _seen = set()",
-      "    if '_ns' not in dir():",
-      "        _frame = sys._getframe(0)",
-      "        _ns = {}",
-      "        while _frame:",
-      "            _ns.update(_frame.f_locals)",
-      "            _frame = _frame.f_back",
-      "    for _v in list(_ns.values()):",
-      "        if isinstance(_v, _PILImg) and id(_v) not in _seen:",
-      "            _seen.add(id(_v))",
-      "            _buf = io.BytesIO()",
-      "            _v.save(_buf, format='PNG')",
-      "            _buf.seek(0)",
-      "            _images.append(_b64.b64encode(_buf.read()).decode())",
-      "except Exception:",
-      "    pass",
-      "",
-      "# 4. bytes PNG/JPEG",
-      "try:",
-      "    _PNG_SIG = bytes([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])",
-      "    _JPG_SIG = bytes([0xff,0xd8,0xff])",
-      "    for _v in list(_ns.values()):",
-      "        if isinstance(_v, (bytes, bytearray)) and id(_v) not in _seen:",
-      "            if _v[:8] == _PNG_SIG or _v[:3] == _JPG_SIG:",
-      "                _seen.add(id(_v))",
-      "                _images.append(_b64.b64encode(bytes(_v)).decode())",
-      "except Exception:",
-      "    pass",
-      "",
-      "[_images, _plotly_json]"
-    ].join("\n");
+    // ── 统一图像渲染（matplotlib / Plotly / PIL / bytes）──
+    // 把所有 Python 探测逻辑注册为全局函数，一次注册多次可复用
+    if (!pyodide.globals.get('_pyrunner_collect')) {
+      pyodide.runPython([
+        "import sys as _sys, io as _io, base64 as _b64",
+        "def _pyrunner_collect():",
+        "    _images = []",
+        "    _plotly_jsons = []",
+        "    _seen_ids = set()",
+        "    # 收集全局命名空间（用户代码定义在 __main__）",
+        "    import __main__",
+        "    _ns = dict(vars(__main__))",
+        "    # 1. matplotlib figures",
+        "    try:",
+        "        import matplotlib.pyplot as _plt",
+        "        for _fn in list(_plt.get_fignums()):",
+        "            _buf = _io.BytesIO()",
+        "            _plt.figure(_fn).savefig(_buf, format='png', dpi=130, bbox_inches='tight')",
+        "            _buf.seek(0)",
+        "            _images.append(_b64.b64encode(_buf.read()).decode())",
+        "        _plt.close('all')",
+        "    except Exception:",
+        "        pass",
+        "    # 2. Plotly Figure objects",
+        "    try:",
+        "        from plotly.basedatatypes import BaseFigure as _BF",
+        "        for _v in list(_ns.values()):",
+        "            if isinstance(_v, _BF) and id(_v) not in _seen_ids:",
+        "                _seen_ids.add(id(_v))",
+        "                _plotly_jsons.append(_v.to_json())",
+        "    except Exception:",
+        "        pass",
+        "    # 3. PIL Image objects",
+        "    try:",
+        "        from PIL.Image import Image as _PILImg",
+        "        for _v in list(_ns.values()):",
+        "            if isinstance(_v, _PILImg) and id(_v) not in _seen_ids:",
+        "                _seen_ids.add(id(_v))",
+        "                _buf = _io.BytesIO()",
+        "                _v.save(_buf, format='PNG')",
+        "                _buf.seek(0)",
+        "                _images.append(_b64.b64encode(_buf.read()).decode())",
+        "    except Exception:",
+        "        pass",
+        "    # 4. raw bytes PNG/JPEG (must be > 100 bytes to skip garbage)",
+        "    _PNG = bytes([137,80,78,71,13,10,26,10])",
+        "    _JPG = bytes([255,216,255])",
+        "    try:",
+        "        for _v in list(_ns.values()):",
+        "            if isinstance(_v, (bytes, bytearray)) and len(_v) > 100 and id(_v) not in _seen_ids:",
+        "                if bytes(_v[:8]) == _PNG or bytes(_v[:3]) == _JPG:",
+        "                    _seen_ids.add(id(_v))",
+        "                    _images.append(_b64.b64encode(bytes(_v)).decode())",
+        "    except Exception:",
+        "        pass",
+        "    return [_images, _plotly_jsons]",
+      ].join("\n"));
+    }
 
-    const result = pyodide.runPython(collectCode);
-    const b64List    = result.get(0).toJs();
-    const plotlyJson = result.get(1);
-    result.destroy();
+    const _raw = pyodide.runPython("_pyrunner_collect()");
+    const b64List     = _raw.get(0).toJs();
+    const plotlyJsons = _raw.get(1).toJs();
+    _raw.destroy();
 
-    // 渲染 Plotly 交互图表
-    if (plotlyJson) {
-      const wrap = document.createElement('div');
-      wrap.className = 'out-line image-out';
-      wrap.style.cssText = 'width:100%;min-height:360px;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:10px 0;';
-      outputEl.appendChild(wrap);
-      // 动态加载 Plotly.js
+    // ── 渲染 Plotly 交互图表 ──
+    if (plotlyJsons && plotlyJsons.length > 0) {
+      // 按需加载 Plotly.js（只加载一次）
       if (!window.Plotly) {
+        appendOutput('⏳ 正在加载 Plotly.js...\n', 'info');
         await new Promise((res, rej) => {
           const s = document.createElement('script');
-          s.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist@2.32.0/plotly.min.js';
+          s.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.32.0/plotly.min.js';
           s.onload = res; s.onerror = rej;
           document.head.appendChild(s);
         });
       }
-      const figData = JSON.parse(plotlyJson);
-      figData.layout = figData.layout || {};
-      figData.layout.margin = { l:40, r:20, t:50, b:40 };
-      figData.layout.paper_bgcolor = 'transparent';
-      figData.layout.plot_bgcolor  = figData.layout.plot_bgcolor || 'rgba(248,249,249,1)';
-      figData.layout.font = figData.layout.font || {};
-      figData.layout.font.family = 'Sora, system-ui, sans-serif';
-      Plotly.newPlot(wrap, figData.data, figData.layout, {
-        responsive: true, displayModeBar: true,
-        modeBarButtonsToRemove: ['sendDataToCloud','editInChartStudio'],
-        displaylogo: false
-      });
+      for (const pjson of plotlyJsons) {
+        const figData = JSON.parse(pjson);
+        figData.layout = figData.layout || {};
+        figData.layout.margin = { l:50, r:20, t:55, b:50 };
+        figData.layout.paper_bgcolor = 'transparent';
+        figData.layout.autosize = true;
+        figData.layout.font = Object.assign({ family:'Sora,system-ui,sans-serif', size:12 }, figData.layout.font||{});
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:100%;height:420px;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:10px 0;background:var(--surface);';
+        outputEl.appendChild(wrap);
+        // 让 DOM 先渲染，再 plot，确保尺寸正确
+        await new Promise(r => requestAnimationFrame(r));
+        Plotly.newPlot(wrap, figData.data, figData.layout, {
+          responsive:true, displayModeBar:true,
+          modeBarButtonsToRemove:['sendDataToCloud','editInChartStudio','lasso2d','select2d'],
+          displaylogo:false
+        });
+      }
     }
 
-    // 渲染静态图像（matplotlib / PIL / bytes）
+    // ── 渲染静态图像（matplotlib / PIL / bytes）──
     for (const b64 of b64List) {
+      // 验证 base64 有效且内容足够长
+      if (!b64 || b64.length < 100) continue;
       const img = document.createElement('img');
-      img.src = 'data:image/png;base64,' + b64;
       img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;display:block;cursor:zoom-in;';
+      img.onerror = () => img.remove(); // 加载失败静默移除
+      img.src = 'data:image/png;base64,' + b64;
       img.onclick = () => {
         const ov = document.createElement('div');
-        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:500;display:flex;align-items:center;justify-content:center;padding:20px;';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
         const bi = document.createElement('img');
         bi.src = img.src;
-        bi.style.cssText = 'max-width:100%;max-height:90vh;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,0.5);';
-        ov.appendChild(bi);
+        bi.style.cssText = 'max-width:100%;max-height:90dvh;border-radius:10px;';
+        const tip = document.createElement('div');
+        tip.textContent = '点击任意处关闭';
+        tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;';
+        ov.append(bi, tip);
         ov.onclick = () => ov.remove();
         document.body.appendChild(ov);
       };
