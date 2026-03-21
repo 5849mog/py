@@ -614,7 +614,10 @@ let inputResolve = null;
 async function initPyodide() {
   try {
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
-    await pyodide.loadPackage(['numpy', 'matplotlib', 'pandas', 'micropip']);
+    await pyodide.loadPackage([
+      'numpy', 'matplotlib', 'pandas', 'scipy', 'micropip',
+      'scikit-learn', 'Pillow', 'sympy', 'statsmodels',
+    ]);
 
     // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
     document.querySelector('.loader-text').textContent = '正在加载中文字体...';
@@ -763,28 +766,35 @@ builtins.input = _custom_input
       'timezone','zoneinfo','profile','pstats','timeit','cProfile',
       'trace','sys','atexit','faulthandler','site','sitecustomize',
       // ── Pyodide 预装 / 内置 ──
-      'numpy','pandas','matplotlib','scipy','sklearn','sympy','PIL',
-      'micropip','js','pyodide','_pyodide','pyodide_http',
+      'numpy','pandas','matplotlib','scipy','sklearn','scikit_learn',
+      'sympy','PIL','Pillow','statsmodels','micropip',
+      'js','pyodide','_pyodide','pyodide_http',
+      'scipy.fftpack','scipy.signal','scipy.linalg','scipy.stats',
+      'sklearn.linear_model','sklearn.preprocessing',
       // ── 常见顶层别名 ──
       'np','pd','plt','sp','sns',
     ]);
     const toInstall = [...pkgSet].filter(p => !builtins.has(p));
     if (toInstall.length > 0) {
       appendOutput(`📦 检测到未预装的包，正在自动安装: ${toInstall.join(', ')}...\n`, 'info');
-      await pyodide.runPythonAsync(`
-import micropip, sys
-_to_install = ${JSON.stringify(toInstall)}
-_failed = []
-for _pkg in _to_install:
-    if _pkg in sys.modules:
-        continue
-    try:
-        await micropip.install(_pkg)
-        print(f"  ✓ {_pkg} 安装成功")
-    except Exception as _e:
-        _failed.append(_pkg)
-        print(f"  ✗ {_pkg} 安装失败: {_e}")
+      // 优先用 loadPackage（Pyodide 原生编译包），失败再用 micropip（PyPI 纯 Python 包）
+      for (const pkg of toInstall) {
+        try {
+          await pyodide.loadPackage(pkg);
+          appendOutput(`  ✓ ${pkg} 安装成功\n`, 'success');
+        } catch (_) {
+          try {
+            await pyodide.runPythonAsync(`
+import micropip as _mp, sys as _sys
+if '${pkg}' not in _sys.modules:
+    await _mp.install('${pkg}')
 `);
+            appendOutput(`  ✓ ${pkg} 安装成功 (PyPI)\n`, 'success');
+          } catch (err2) {
+            appendOutput(`  ✗ ${pkg} 安装失败: ${err2.message||err2}\n`, 'stderr');
+          }
+        }
+      }
     }
 
     // Handle matplotlib + 确保每次运行都应用中文字体
