@@ -816,7 +816,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 `);
     }
 
-    await pyodide.runPythonAsync(code);
+    const _userResult = await pyodide.runPythonAsync(code);
 
     // ── 统一图像渲染（matplotlib / Plotly / PIL / bytes）──
     // 把所有 Python 探测逻辑注册为全局函数，一次注册多次可复用
@@ -877,7 +877,22 @@ mpl.rcParams['axes.unicode_minus'] = False
       ].join("\n"));
     }
 
-    const _raw = pyodide.runPython("_pyrunner_collect()");
+    // 把用户代码返回值注入收集函数，处理 return fig 这类情况
+    pyodide.globals.set("_pyrunner_retval", _userResult ?? null);
+    const _raw = pyodide.runPython([
+      "try:",
+      "    from plotly.basedatatypes import BaseFigure as _BF2",
+      "    if isinstance(_pyrunner_retval, _BF2):",
+      "        _pyrunner_retval_json = _pyrunner_retval.to_json()",
+      "    else:",
+      "        _pyrunner_retval_json = None",
+      "except Exception:",
+      "    _pyrunner_retval_json = None",
+      "r = _pyrunner_collect()",
+      "if _pyrunner_retval_json and _pyrunner_retval_json not in r[1]:",
+      "    r[1].insert(0, _pyrunner_retval_json)",
+      "r",
+    ].join("\n"));
     const b64List     = _raw.get(0).toJs();
     const plotlyJsons = _raw.get(1).toJs();
     _raw.destroy();
