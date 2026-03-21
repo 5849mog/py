@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>PyRunner — Python 运行平台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+<style>
+  :root {
+    --bg: #FAF9F7;
+    --surface: #FFFFFF;
+    --surface2: #F4F2EE;
+    --surface3: #ECEAE4;
+    --border: rgba(0,0,0,0.08);
+    --border-md: rgba(0,0,0,0.13);
+    --text: #1A1916;
+    --text2: #5C5A54;
+    --text3: #9A9890;
+    --accent: #C96B3A;
+    --accent-bg: #FAEEE6;
+    --accent-text: #7A3A18;
+    --green: #2D7A4F;
+    --green-bg: #EAF4EE;
+    --red: #B03030;
+    --red-bg: #FAEAEA;
+    --blue: #1E5FA8;
+    --blue-bg: #E6EFF9;
+    --radius: 14px;
+    --radius-sm: 8px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.04);
+    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --sans: 'Sora', system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17161A;
+      --surface: #1F1E24;
+      --surface2: #27262D;
+      --surface3: #2F2E38;
+      --border: rgba(255,255,255,0.07);
+      --border-md: rgba(255,255,255,0.12);
+      --text: #F0EDE8;
+      --text2: #A09D97;
+      --text3: #5C5A56;
+      --accent: #E07840;
+      --accent-bg: #2E1E0F;
+      --accent-text: #F4A872;
+      --green: #4CAF79;
+      --green-bg: #0E2518;
+      --red: #E06060;
+      --red-bg: #2A1010;
+      --blue: #6BA3E8;
+      --blue-bg: #0D1F38;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); font-family: var(--sans); color: var(--text); }
+
+  /* ── Layout ── */
+  #app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px 10px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .logo { display: flex; align-items: center; gap: 8px; }
+  .logo-icon {
+    width: 30px; height: 30px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .logo-icon svg { width: 16px; height: 16px; fill: white; }
+  .logo-name { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; }
+  .logo-name span { color: var(--accent); }
+  .header-actions { display: flex; gap: 6px; }
+  .icon-btn {
+    width: 34px; height: 34px;
+    border: 1px solid var(--border-md);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--text2);
+    transition: background 0.15s, color 0.15s;
+    position: relative;
+  }
+  .icon-btn:active { background: var(--surface2); }
+  .icon-btn svg { width: 16px; height: 16px; }
+
+  /* ── Tabs ── */
+  #tab-bar {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 12px;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  #tab-bar::-webkit-scrollbar { display: none; }
+  .tab {
+    display: flex; align-items: center; gap: 5px;
+    padding: 8px 10px;
+    font-size: 12px; font-weight: 500;
+    color: var(--text3);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-close {
+    width: 14px; height: 14px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--text3);
+    margin-left: 2px;
+  }
+  .tab-close:hover { background: var(--surface3); color: var(--text); }
+  .tab-add {
+    display: flex; align-items: center; padding: 8px 8px;
+    color: var(--text3); cursor: pointer; font-size: 18px; font-weight: 300;
+  }
+  .tab-add:hover { color: var(--text); }
+
+  /* ── Editor area ── */
+  #main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .run-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 7px 14px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: var(--sans);
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    letter-spacing: 0.1px;
+  }
+  .run-btn:active { opacity: 0.85; transform: scale(0.97); }
+  .run-btn.loading { opacity: 0.7; pointer-events: none; }
+  .run-btn svg { width: 13px; height: 13px; fill: white; }
+  .toolbar-spacer { flex: 1; }
+  .status-pill {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 100px;
+    background: var(--surface3);
+    color: var(--text3);
+    transition: all 0.3s;
+  }
+  .status-pill.ready { background: var(--green-bg); color: var(--green); }
+  .status-pill.loading { background: var(--blue-bg); color: var(--blue); }
+  .status-pill.error { background: var(--red-bg); color: var(--red); }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor; flex-shrink: 0;
+  }
+  .status-dot.pulse { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+  .toolbar-icon-btn {
+    width: 30px; height: 30px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-md);
+    background: var(--surface);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--text2);
+    transition: background 0.15s;
+  }
+  .toolbar-icon-btn:active { background: var(--surface3); }
+  .toolbar-icon-btn svg { width: 14px; height: 14px; }
+
+  /* ── Split panel ── */
+  #editor-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
+  #resizer {
+    height: 5px; background: var(--border); cursor: row-resize; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  #resizer:hover, #resizer.dragging { background: var(--accent); }
+  #resizer::after {
+    content: ''; width: 32px; height: 3px;
+    border-radius: 2px; background: var(--border-md);
+  }
+
+  /* ── Code editor ── */
+  #code-wrap {
+    flex: 1; min-height: 120px; overflow: hidden; display: flex; flex-direction: column; position: relative;
+  }
+  #editor {
+    flex: 1; width: 100%; min-height: 0; resize: none; border: none; outline: none;
+    background: var(--surface);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px; line-height: 1.75;
+    padding: 14px 14px 14px 50px;
+    tab-size: 4; -moz-tab-size: 4;
+    white-space: pre;
+    overflow-x: auto; overflow-y: auto;
+    caret-color: var(--accent);
+  }
+  #editor::selection { background: rgba(201,107,58,0.18); }
+  #line-numbers {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 40px; padding: 14px 6px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.75;
+    text-align: right; color: var(--text3);
+    pointer-events: none; user-select: none;
+    background: var(--surface2);
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  /* ── Output panel ── */
+  #output-panel {
+    height: 240px; min-height: 80px; max-height: 70vh;
+    display: flex; flex-direction: column;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  #output-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    flex-shrink: 0;
+  }
+  #output-title { font-size: 11px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.8px; }
+  .output-spacer { flex: 1; }
+  .output-clear-btn {
+    font-size: 11px; color: var(--text3); cursor: pointer; padding: 2px 6px;
+    border-radius: 4px; transition: background 0.15s, color 0.15s;
+  }
+  .output-clear-btn:hover { background: var(--surface3); color: var(--text); }
+  #output-scroll {
+    flex: 1; overflow-y: auto; overflow-x: auto; padding: 12px 14px;
+    scrollbar-width: thin; scrollbar-color: var(--border-md) transparent;
+  }
+  #output-scroll::-webkit-scrollbar { width: 4px; }
+  #output-scroll::-webkit-scrollbar-track { background: transparent; }
+  #output-scroll::-webkit-scrollbar-thumb { background: var(--border-md); border-radius: 2px; }
+  #output-content {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+    white-space: pre-wrap; word-break: break-all;
+    color: var(--text);
+  }
+  .out-line { display: block; }
+  .out-line.stderr { color: var(--red); }
+  .out-line.success { color: var(--green); }
+  .out-line.info { color: var(--text3); font-style: italic; }
+  .out-line.image-out { margin: 8px 0; }
+  .out-line.image-out img { max-width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+
+  /* ── Placeholder ── */
+  .output-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 8px; opacity: 0.5;
+  }
+  .output-placeholder svg { width: 28px; height: 28px; color: var(--text3); }
+  .output-placeholder p { font-size: 12px; color: var(--text3); }
+
+  /* ── Snippets drawer ── */
+  #snippets-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+    display: none; z-index: 100; align-items: flex-end;
+  }
+  #snippets-overlay.open { display: flex; }
+  #snippets-drawer {
+    width: 100%; background: var(--surface);
+    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 75vh; display: flex; flex-direction: column;
+    animation: slideUp 0.25s ease;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  #snippets-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--border-md); margin: 10px auto 0; }
+  #snippets-header { display: flex; align-items: center; padding: 12px 16px 8px; gap: 10px; }
+  #snippets-title { font-size: 15px; font-weight: 600; flex: 1; }
+  #snippets-list { overflow-y: auto; padding: 0 12px 16px; flex: 1; }
+  .snippet-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px; border-radius: var(--radius-sm);
+    cursor: pointer; transition: background 0.15s;
+    border: 1px solid transparent;
+  }
+  .snippet-item:hover { background: var(--surface2); }
+  .snippet-item:active { background: var(--surface3); }
+  .snippet-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; flex-shrink: 0;
+  }
+  .snippet-text .snippet-name { font-size: 13px; font-weight: 600; }
+  .snippet-text .snippet-desc { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+  /* ── Settings panel ── */
+  #settings-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+    display: none; z-index: 100; align-items: flex-end;
+  }
+  #settings-overlay.open { display: flex; }
+  #settings-drawer {
+    width: 100%; background: var(--surface);
+    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 65vh; display: flex; flex-direction: column;
+    animation: slideUp 0.25s ease;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  #settings-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--border-md); margin: 10px auto 0; }
+  #settings-header { display: flex; align-items: center; padding: 12px 16px 8px; gap: 10px; }
+  #settings-title { font-size: 15px; font-weight: 600; flex: 1; }
+  #settings-body { overflow-y: auto; padding: 4px 16px 16px; flex: 1; }
+  .setting-row { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { flex: 1; }
+  .setting-label p { font-size: 13px; font-weight: 500; }
+  .setting-label span { font-size: 11.5px; color: var(--text3); }
+  select.setting-select {
+    background: var(--surface2); border: 1px solid var(--border-md);
+    color: var(--text); font-family: var(--sans); font-size: 12px;
+    padding: 6px 10px; border-radius: var(--radius-sm); outline: none;
+  }
+  .toggle {
+    width: 40px; height: 22px; border-radius: 100px;
+    background: var(--surface3); border: 1px solid var(--border-md);
+    position: relative; cursor: pointer; transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle.on { background: var(--accent); border-color: var(--accent); }
+  .toggle::after {
+    content: ''; position: absolute;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: white; top: 2px; left: 2px;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .toggle.on::after { transform: translateX(18px); }
+
+  /* ── Toast ── */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
+    background: var(--text); color: var(--bg);
+    padding: 10px 18px; border-radius: 100px;
+    font-size: 13px; font-weight: 500;
+    z-index: 200; transition: transform 0.3s ease;
+    white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ── Loading overlay ── */
+  #loading-overlay {
+    position: fixed; inset: 0; background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 300; gap: 16px;
+  }
+  .loader-logo { font-size: 32px; font-weight: 600; letter-spacing: -1px; }
+  .loader-logo span { color: var(--accent); }
+  .loader-bar {
+    width: 160px; height: 2px; background: var(--border);
+    border-radius: 2px; overflow: hidden;
+  }
+  .loader-fill {
+    height: 100%; background: var(--accent); border-radius: 2px;
+    animation: load 2.5s ease-in-out infinite;
+    transform-origin: left;
+  }
+  @keyframes load { 0%{width:0%} 60%{width:80%} 100%{width:100%} }
+  .loader-text { font-size: 12px; color: var(--text3); }
+
+  /* ── Input prompt ── */
+  #stdin-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+    display: none; align-items: center; justify-content: center;
+    z-index: 150; padding: 20px;
+  }
+  #stdin-overlay.open { display: flex; }
+  #stdin-box {
+    background: var(--surface); border-radius: var(--radius);
+    padding: 20px; width: 100%; max-width: 360px;
+    box-shadow: var(--shadow);
+  }
+  #stdin-prompt { font-size: 13px; color: var(--text2); margin-bottom: 12px; font-family: var(--mono); }
+  #stdin-input {
+    width: 100%; padding: 10px 12px;
+    border: 1px solid var(--border-md); border-radius: var(--radius-sm);
+    background: var(--surface2); color: var(--text);
+    font-family: var(--mono); font-size: 13px; outline: none;
+  }
+  #stdin-submit {
+    margin-top: 12px; width: 100%; padding: 10px;
+    background: var(--accent); color: white; border: none;
+    border-radius: var(--radius-sm); font-family: var(--sans);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading-overlay">
+  <div class="loader-logo">Py<span>Runner</span></div>
+  <div class="loader-bar"><div class="loader-fill"></div></div>
+  <div class="loader-text">正在加载 Python 运行时...</div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><path d="M9.585 11.692H14.4v-3.23C14.4 5.1 12.55 3 9.585 3 6.87 3 5 4.92 5 7.462v1.015h3.23V7.4c0-.842.355-1.4 1.355-1.4s1.3.616 1.3 1.4v1.292H5v5.769c0 2.577 1.87 4.539 4.585 4.539H11v-2.308H9.585c-1 0-1.355-.615-1.355-1.461v-2h1.355zm5.1-3.692h2.73v2H14.685zm0 3.692v2h-2.73V11.7h2.73zm3.73-3.692v2h-1v3.692h1v2h-1c-2.73 0-4.415-1.962-4.415-4.539v-.385h1.685V9.97h-.73V7.97h4.46v.03z"/></svg>
+      </div>
+      <div class="logo-name">Py<span>Runner</span></div>
+    </div>
+    <div class="header-actions">
+      <div class="icon-btn" id="snippet-btn" title="代码片段">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+      </div>
+      <div class="icon-btn" id="settings-btn" title="设置">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8a4 4 0 100 8 4 4 0 000-8zM12 2v2m0 18v-2m10-8h-2M4 12H2m15.66-6.34-1.41 1.41M7.75 16.25l-1.41 1.41M18.36 18.36l-1.41-1.41M7.05 7.05L5.64 5.64"/></svg>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tab bar -->
+  <div id="tab-bar">
+    <div class="tab active" data-idx="0">
+      <span class="tab-dot" style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;"></span>
+      main.py
+      <span class="tab-close" onclick="removeTab(event,0)">×</span>
+    </div>
+    <div class="tab-add" id="add-tab-btn">+</div>
+  </div>
+
+  <!-- Main area -->
+  <div id="main">
+    <div id="editor-panel">
+      <!-- Code editor -->
+      <div id="code-wrap">
+        <div id="line-numbers">1</div>
+        <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"># 欢迎使用 PyRunner！
+# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
+
+import math
+
+def fibonacci(n):
+    """生成斐波那契数列"""
+    a, b = 0, 1
+    result = []
+    for _ in range(n):
+        result.append(a)
+        a, b = b, a + b
+    return result
+
+# 基础示例
+nums = fibonacci(10)
+print("斐波那契数列:", nums)
+print(f"第 10 项: {nums[-1]}")
+print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
+print(f"π 的值: {math.pi:.10f}")
+</textarea>
+      </div>
+
+      <!-- Resizer -->
+      <div id="resizer"></div>
+
+      <!-- Output panel -->
+      <div id="output-panel">
+        <div id="output-header">
+          <span id="output-title">输出</span>
+          <div class="output-spacer"></div>
+          <div class="output-clear-btn" id="copy-output-btn" onclick="copyOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:3px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>复制</div>
+          <div class="output-clear-btn" onclick="clearOutput()">清空</div>
+        </div>
+        <div id="output-scroll">
+          <div id="output-content">
+            <div class="output-placeholder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+              <p>点击运行查看输出</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolbar (above keyboard / at bottom) -->
+  <div id="toolbar">
+    <button class="run-btn loading" id="run-btn" onclick="runCode()">
+      <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      运行
+    </button>
+    <div class="toolbar-spacer"></div>
+    <div class="toolbar-icon-btn" onclick="insertText('\t')" title="Tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </div>
+    <div class="toolbar-icon-btn" onclick="insertText('()')" title="括号">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 4L4 12l4 8M16 4l4 8-4 8"/></svg>
+    </div>
+    <div class="toolbar-icon-btn" onclick="insertText('[]')" title="方括号">
+      <span style="font-size:13px;font-weight:600;font-family:var(--mono)">[]</span>
+    </div>
+    <div class="toolbar-icon-btn" onclick="insertText(':')" title="冒号">
+      <span style="font-size:15px;font-weight:600;font-family:var(--mono)">:</span>
+    </div>
+    <div class="toolbar-icon-btn" onclick="insertText('\"\"')" title="引号">
+      <span style="font-size:13px;font-weight:600;font-family:var(--mono)">""</span>
+    </div>
+    <div class="toolbar-icon-btn" onclick="undoCode()" title="撤销">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h10a5 5 0 010 10H9"/><path d="M3 10l4-4-4-4"/></svg>
+    </div>
+    <div class="toolbar-icon-btn" id="copy-code-btn" onclick="copyCode()" title="复制代码">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+    </div>
+    <div style="width:1px;height:20px;background:var(--border);margin:0 2px;"></div>
+    <div class="status-pill loading" id="status">
+      <div class="status-dot pulse"></div>
+      <span id="status-text">加载中</span>
+    </div>
+  </div>
+</div>
+
+<!-- Snippets Drawer -->
+<div id="snippets-overlay" onclick="closeSnippets(event)">
+  <div id="snippets-drawer">
+    <div id="snippets-handle"></div>
+    <div id="snippets-header">
+      <span id="snippets-title">代码片段</span>
+      <div class="icon-btn" onclick="closeSnippets()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+    </div>
+    <div id="snippets-list"></div>
+  </div>
+</div>
+
+<!-- Settings Drawer -->
+<div id="settings-overlay" onclick="closeSettings(event)">
+  <div id="settings-drawer">
+    <div id="settings-handle"></div>
+    <div id="settings-header">
+      <span id="settings-title">设置</span>
+      <div class="icon-btn" onclick="closeSettings()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+    </div>
+    <div id="settings-body">
+      <div class="setting-row">
+        <div class="setting-label"><p>字体大小</p><span>代码区域字体</span></div>
+        <select class="setting-select" id="font-size-select" onchange="applyFontSize(this.value)">
+          <option value="11">11px</option>
+          <option value="12">12px</option>
+          <option value="13" selected>13px</option>
+          <option value="14">14px</option>
+          <option value="16">16px</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label"><p>自动缩进</p><span>按 Enter 自动对齐</span></div>
+        <div class="toggle on" id="auto-indent-toggle" onclick="toggleSetting('auto-indent')"></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label"><p>清空上次输出</p><span>每次运行前清空</span></div>
+        <div class="toggle on" id="clear-before-run-toggle" onclick="toggleSetting('clear-before-run')"></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label"><p>显示行号</p><span>代码行号显示</span></div>
+        <div class="toggle on" id="show-lines-toggle" onclick="toggleSetting('show-lines')"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Input (stdin) overlay -->
+<div id="stdin-overlay">
+  <div id="stdin-box">
+    <div id="stdin-prompt"></div>
+    <input id="stdin-input" type="text" placeholder="输入内容...">
+    <button id="stdin-submit">确认</button>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ── State ──
+let pyodide = null;
+let tabs = [{ name: 'main.py', code: document.getElementById('editor').value }];
+let activeTab = 0;
+let settings = { autoIndent: true, clearBeforeRun: true, showLines: true };
+let isRunning = false;
+let inputResolve = null;
+
+// ── Pyodide init ──
+async function initPyodide() {
+  try {
+    pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
+    await pyodide.loadPackage(['numpy', 'matplotlib', 'pandas']);
+
+    // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
+    document.querySelector('.loader-text').textContent = '正在加载中文字体...';
+    try {
+      // NotoSansCJK Regular OTF，托管于 jsDelivr，约 10 MB
+      const fontUrl = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf';
+      const fontResp = await fetch(fontUrl);
+      if (!fontResp.ok) throw new Error('font fetch ' + fontResp.status);
+      const fontBytes = new Uint8Array(await fontResp.arrayBuffer());
+      pyodide.FS.writeFile('/tmp/NotoSansSC.otf', fontBytes);
+      pyodide.runPython(`
+import matplotlib.font_manager as fm, matplotlib as mpl
+fe = fm.FontEntry(fname='/tmp/NotoSansSC.otf', name='Noto Sans SC')
+fm.fontManager.ttflist.insert(0, fe)
+mpl.rcParams['font.family'] = 'Noto Sans SC'
+mpl.rcParams['axes.unicode_minus'] = False
+`);
+      showToast('Python 3.11 已就绪，中文字体已加载 ✓');
+    } catch(fontErr) {
+      console.warn('中文字体加载失败，降级:', fontErr);
+      pyodide.runPython(`
+import matplotlib as mpl
+mpl.rcParams['axes.unicode_minus'] = False
+`);
+      showToast('Python 3.11 已就绪（中文字体加载失败）');
+    }
+
+    setStatus('ready', '就绪');
+    document.getElementById('run-btn').classList.remove('loading');
+    document.getElementById('loading-overlay').style.opacity = '0';
+    setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
+  } catch(e) {
+    setStatus('error', '加载失败');
+    appendOutput('⚠ Pyodide 加载失败，请检查网络连接\n' + e, 'stderr');
+    document.getElementById('loading-overlay').style.display = 'none';
+  }
+}
+
+// ── Run code ──
+async function runCode() {
+  if (!pyodide || isRunning) return;
+  const code = document.getElementById('editor').value;
+  if (!code.trim()) { showToast('请输入代码'); return; }
+  isRunning = true;
+  document.getElementById('run-btn').classList.add('loading');
+  setStatus('loading', '运行中');
+  if (settings.clearBeforeRun) clearOutput();
+
+  const t0 = performance.now();
+  let outputEl = document.getElementById('output-content');
+
+  // Redirect stdout/stderr
+  pyodide.globals.set('__input_prompt__', null);
+  pyodide.runPython(`
+import sys, io
+class _Capture(io.TextIOBase):
+    def __init__(self, kind):
+        self.kind = kind
+        self.buf = ""
+    def write(self, s):
+        import js
+        js._pyrunner_write(self.kind, s)
+        return len(s)
+    def flush(self): pass
+sys.stdout = _Capture('stdout')
+sys.stderr = _Capture('stderr')
+`);
+
+  window._pyrunner_write = (kind, s) => appendOutput(s, kind === 'stderr' ? 'stderr' : null);
+
+  // Override input()
+  pyodide.globals.set('__builtins__', pyodide.globals.get('__builtins__'));
+  pyodide.runPython(`
+import builtins
+_orig_input = builtins.input
+def _custom_input(prompt=""):
+    import js
+    return js._pyrunner_input(str(prompt))
+builtins.input = _custom_input
+`);
+  window._pyrunner_input = (prompt) => {
+    return new Promise(resolve => {
+      document.getElementById('stdin-prompt').textContent = prompt || '请输入：';
+      document.getElementById('stdin-input').value = '';
+      document.getElementById('stdin-overlay').classList.add('open');
+      document.getElementById('stdin-input').focus();
+      inputResolve = resolve;
+    });
+  };
+  document.getElementById('stdin-submit').onclick = () => {
+    const val = document.getElementById('stdin-input').value;
+    document.getElementById('stdin-overlay').classList.remove('open');
+    if (inputResolve) { inputResolve(val); inputResolve = null; }
+  };
+  document.getElementById('stdin-input').onkeydown = (e) => {
+    if (e.key === 'Enter') document.getElementById('stdin-submit').click();
+  };
+
+  try {
+    // Handle matplotlib + 确保每次运行都应用中文字体
+    const hasPlt = code.includes('matplotlib') || code.includes('plt.');
+    if (hasPlt) {
+      pyodide.runPython(`
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib as mpl, matplotlib.font_manager as fm
+import os
+# 如果 OTF 文件存在但字体未注册（例如页面缓存），重新注册
+if os.path.exists('/tmp/NotoSansSC.otf'):
+    _registered = [f.name for f in fm.fontManager.ttflist if 'Noto Sans SC' in f.name]
+    if not _registered:
+        fe = fm.FontEntry(fname='/tmp/NotoSansSC.otf', name='Noto Sans SC')
+        fm.fontManager.ttflist.insert(0, fe)
+    mpl.rcParams['font.family'] = 'Noto Sans SC'
+mpl.rcParams['axes.unicode_minus'] = False
+`);
+    }
+
+    await pyodide.runPythonAsync(code);
+
+    if (hasPlt) {
+      try {
+        const imgData = pyodide.runPython(`
+import matplotlib.pyplot as plt, io, base64
+buf = io.BytesIO()
+plt.savefig(buf, format='png', dpi=120, bbox_inches='tight')
+buf.seek(0)
+import base64
+base64.b64encode(buf.read()).decode('utf-8')
+`);
+        const img = document.createElement('img');
+        img.src = 'data:image/png;base64,' + imgData;
+        img.style.cssText = 'max-width:100%;border-radius:8px;border:1px solid var(--border);margin-top:8px;';
+        const wrap = document.createElement('span');
+        wrap.className = 'out-line image-out';
+        wrap.appendChild(img);
+        outputEl.appendChild(wrap);
+        pyodide.runPython('plt.close("all")');
+      } catch(e) {}
+    }
+
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
+    appendOutput(`\n✓ 运行完成，耗时 ${elapsed}s`, 'success');
+    setStatus('ready', '就绪');
+  } catch(e) {
+    const msg = e.message || String(e);
+    appendOutput('\n' + msg, 'stderr');
+    setStatus('error', '出错');
+    setTimeout(() => setStatus('ready', '就绪'), 2500);
+  }
+  isRunning = false;
+  document.getElementById('run-btn').classList.remove('loading');
+  scrollOutput();
+}
+
+// ── Output helpers ──
+function appendOutput(text, cls) {
+  const el = document.getElementById('output-content');
+  // Remove placeholder
+  const ph = el.querySelector('.output-placeholder');
+  if (ph) ph.remove();
+  const span = document.createElement('span');
+  span.className = 'out-line' + (cls ? ' ' + cls : '');
+  span.textContent = text;
+  el.appendChild(span);
+}
+
+function clearOutput() {
+  document.getElementById('output-content').innerHTML = '';
+}
+
+function scrollOutput() {
+  const s = document.getElementById('output-scroll');
+  s.scrollTop = s.scrollHeight;
+}
+
+// ── Status ──
+function setStatus(kind, text) {
+  const pill = document.getElementById('status');
+  const dot = pill.querySelector('.status-dot');
+  const txt = document.getElementById('status-text');
+  pill.className = 'status-pill ' + kind;
+  txt.textContent = text;
+  dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
+}
+
+// ── Editor helpers ──
+function insertText(text) {
+  const ed = document.getElementById('editor');
+  const s = ed.selectionStart, e = ed.selectionEnd;
+  const before = ed.value.substring(0, s);
+  const after = ed.value.substring(e);
+  ed.value = before + text + after;
+  const pos = s + Math.floor(text.length / 2);
+  ed.setSelectionRange(pos, pos);
+  ed.focus();
+  updateLineNumbers();
+}
+
+function undoCode() {
+  document.getElementById('editor').focus();
+  document.execCommand('undo');
+}
+
+// ── Line numbers ──
+function updateLineNumbers() {
+  const ed = document.getElementById('editor');
+  const lines = ed.value.split('\n').length;
+  const ln = document.getElementById('line-numbers');
+  let html = '';
+  for (let i = 1; i <= lines; i++) html += i + '\n';
+  ln.textContent = html;
+  ln.scrollTop = ed.scrollTop;
+}
+
+document.getElementById('editor').addEventListener('input', updateLineNumbers);
+document.getElementById('editor').addEventListener('scroll', () => {
+  document.getElementById('line-numbers').scrollTop = document.getElementById('editor').scrollTop;
+});
+document.getElementById('editor').addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    insertText('    ');
+  }
+  if (e.key === 'Enter' && settings.autoIndent) {
+    const ed = e.target;
+    const s = ed.selectionStart;
+    const lines = ed.value.substring(0, s).split('\n');
+    const lastLine = lines[lines.length - 1];
+    const indent = lastLine.match(/^(\s*)/)[1];
+    const extraIndent = lastLine.trimEnd().endsWith(':') ? '    ' : '';
+    e.preventDefault();
+    insertText('\n' + indent + extraIndent);
+  }
+});
+updateLineNumbers();
+
+// ── Tabs ──
+let tabCounter = 1;
+function addTab() {
+  tabCounter++;
+  tabs.push({ name: 'script' + tabCounter + '.py', code: '# 新文件\nprint("Hello, World!")\n' });
+  switchTab(tabs.length - 1);
+  renderTabs();
+}
+
+function switchTab(idx) {
+  tabs[activeTab].code = document.getElementById('editor').value;
+  activeTab = idx;
+  document.getElementById('editor').value = tabs[idx].code;
+  updateLineNumbers();
+  renderTabs();
+}
+
+function removeTab(e, idx) {
+  e.stopPropagation();
+  if (tabs.length === 1) { showToast('至少保留一个标签页'); return; }
+  tabs.splice(idx, 1);
+  activeTab = Math.min(activeTab, tabs.length - 1);
+  document.getElementById('editor').value = tabs[activeTab].code;
+  updateLineNumbers();
+  renderTabs();
+}
+
+function renderTabs() {
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = '';
+  tabs.forEach((t, i) => {
+    const div = document.createElement('div');
+    div.className = 'tab' + (i === activeTab ? ' active' : '');
+    div.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:${i===activeTab?'var(--accent)':'var(--text3)'};display:inline-block;flex-shrink:0"></span>${t.name}<span class="tab-close" onclick="removeTab(event,${i})">×</span>`;
+    div.addEventListener('click', () => switchTab(i));
+    bar.appendChild(div);
+  });
+  const add = document.createElement('div');
+  add.className = 'tab-add';
+  add.textContent = '+';
+  add.onclick = addTab;
+  bar.appendChild(add);
+}
+document.getElementById('add-tab-btn').onclick = addTab;
+
+// ── Resizer ──
+let resizing = false, startY = 0, startH = 0;
+const resizer = document.getElementById('resizer');
+const outputPanel = document.getElementById('output-panel');
+resizer.addEventListener('pointerdown', (e) => {
+  resizing = true; startY = e.clientY; startH = outputPanel.offsetHeight;
+  resizer.classList.add('dragging');
+  e.preventDefault();
+});
+window.addEventListener('pointermove', (e) => {
+  if (!resizing) return;
+  const delta = startY - e.clientY;
+  const newH = Math.max(80, Math.min(window.innerHeight * 0.7, startH + delta));
+  outputPanel.style.height = newH + 'px';
+});
+window.addEventListener('pointerup', () => { resizing = false; resizer.classList.remove('dragging'); });
+
+// ── Snippets ──
+const SNIPPETS = [
+  { icon: '📊', name: 'NumPy 数组', desc: '创建和操作数组', code: `import numpy as np\n\narr = np.array([1, 2, 3, 4, 5])\nprint("数组:", arr)\nprint("均值:", np.mean(arr))\nprint("标准差:", np.std(arr))\nprint("排序:", np.sort(arr[::-1]))\n` },
+  { icon: '🗂️', name: 'Pandas 数据表', desc: '创建 DataFrame 并分析', code: `import pandas as pd\n\ndata = {\n    '姓名': ['Alice', 'Bob', 'Charlie', 'Diana'],\n    '年龄': [25, 30, 35, 28],\n    '成绩': [92, 85, 78, 95]\n}\ndf = pd.DataFrame(data)\nprint(df)\nprint("\\n统计摘要:")\nprint(df.describe())\n` },
+  { icon: '📈', name: 'Matplotlib 折线图', desc: '绘制中文图表', code: `import matplotlib.pyplot as plt\nimport numpy as np\n\nx = np.linspace(0, 4 * np.pi, 200)\ny1 = np.sin(x)\ny2 = np.cos(x)\n\nfig, ax = plt.subplots(figsize=(8, 4))\nax.plot(x, y1, label='正弦 sin(x)', color='#C96B3A', linewidth=2)\nax.plot(x, y2, label='余弦 cos(x)', color='#1E5FA8', linewidth=2)\nax.set_title('正弦与余弦函数对比', fontsize=14)\nax.set_xlabel('角度（弧度）')\nax.set_ylabel('函数值')\nax.legend()\nax.grid(alpha=0.3)\nplt.tight_layout()\nplt.show()\n` },
+  { icon: '🔢', name: '矩阵运算', desc: 'NumPy 线性代数', code: `import numpy as np\n\nA = np.array([[2, 1], [5, 3]])\nb = np.array([4, 7])\nx = np.linalg.solve(A, b)\nprint("线性方程组 Ax = b 的解:")\nprint("x =", x)\n\nvals, vecs = np.linalg.eig(A)\nprint("\\n特征值:", vals)\n` },
+  { icon: '📝', name: '文件读写', desc: '读取和写入文本文件', code: `# 写入文件\nwith open('data.txt', 'w', encoding='utf-8') as f:\n    for i in range(5):\n        f.write(f'第 {i+1} 行数据\\n')\n\n# 读取文件\nwith open('data.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\nprint(content)\n` },
+  { icon: '🧮', name: '排序算法', desc: '快速排序实现', code: `def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    mid = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + mid + quicksort(right)\n\nimport random\ndata = [random.randint(1, 100) for _ in range(15)]\nprint("原始:", data)\nprint("排序:", quicksort(data))\n` },
+  { icon: '🌐', name: 'JSON 处理', desc: '解析和生成 JSON', code: `import json\n\ndata = {\n    "name": "PyRunner",\n    "version": "1.0",\n    "features": ["运行代码", "可视化", "多文件"],\n    "author": {"name": "Claude", "year": 2024}\n}\n\njson_str = json.dumps(data, ensure_ascii=False, indent=2)\nprint("JSON 输出:")\nprint(json_str)\n\nparsed = json.loads(json_str)\nprint("\\n解析后:", parsed['features'])\n` },
+  { icon: '⏱️', name: '性能测量', desc: '测量代码运行时间', code: `import time\nimport random\n\ndef bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n\ndata = [random.randint(1, 1000) for _ in range(500)]\nstart = time.perf_counter()\nbubble_sort(data.copy())\nelapsed = time.perf_counter() - start\nprint(f"冒泡排序 500 个元素: {elapsed*1000:.2f} ms")\n` },
+];
+
+function renderSnippets() {
+  const list = document.getElementById('snippets-list');
+  list.innerHTML = '';
+  SNIPPETS.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'snippet-item';
+    div.innerHTML = `<div class="snippet-icon">${s.icon}</div><div class="snippet-text"><div class="snippet-name">${s.name}</div><div class="snippet-desc">${s.desc}</div></div>`;
+    div.onclick = () => {
+      tabs[activeTab].code = s.code;
+      document.getElementById('editor').value = s.code;
+      updateLineNumbers();
+      closeSnippets();
+      showToast('已加载: ' + s.name);
+    };
+    list.appendChild(div);
+  });
+}
+renderSnippets();
+
+function closeSnippets(e) {
+  if (!e || e.target === document.getElementById('snippets-overlay')) {
+    document.getElementById('snippets-overlay').classList.remove('open');
+  }
+}
+function closeSettings(e) {
+  if (!e || e.target === document.getElementById('settings-overlay')) {
+    document.getElementById('settings-overlay').classList.remove('open');
+  }
+}
+document.getElementById('snippet-btn').onclick = () => {
+  document.getElementById('snippets-overlay').classList.add('open');
+};
+document.getElementById('settings-btn').onclick = () => {
+  document.getElementById('settings-overlay').classList.add('open');
+};
+
+// ── Settings ──
+function applyFontSize(v) {
+  document.getElementById('editor').style.fontSize = v + 'px';
+  document.getElementById('line-numbers').style.fontSize = v + 'px';
+}
+function toggleSetting(key) {
+  const map = { 'auto-indent': 'autoIndent', 'clear-before-run': 'clearBeforeRun', 'show-lines': 'showLines' };
+  const k = map[key];
+  settings[k] = !settings[k];
+  document.getElementById(key + '-toggle').classList.toggle('on', settings[k]);
+  if (key === 'show-lines') {
+    document.getElementById('line-numbers').style.display = settings.showLines ? '' : 'none';
+    document.getElementById('editor').style.paddingLeft = settings.showLines ? '50px' : '14px';
+  }
+}
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── 复制工具（兼容 file:// 和浏览器环境）──
+async function smartCopy(text) {
+  // 方案1：Clipboard API（HTTPS / localhost）
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
+  }
+  // 方案2：execCommand（file:// 协议 / 旧浏览器）
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (_) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+function flashCopyBtn(id, svgInner) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px"><path d="M20 6L9 17l-5-5"/></svg>';
+  btn.style.color = 'var(--green)';
+  setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1400);
+}
+
+async function copyOutput() {
+  const text = document.getElementById('output-content').textContent.trim();
+  if (!text) { showToast('输出为空'); return; }
+  const ok = await smartCopy(text);
+  if (ok) { flashCopyBtn('copy-output-btn'); showToast('已复制输出内容 \u2713'); }
+  else showToast('复制失败，请手动选择文本');
+}
+
+async function copyCode() {
+  const text = document.getElementById('editor').value;
+  if (!text.trim()) { showToast('代码为空'); return; }
+  const ok = await smartCopy(text);
+  if (ok) { flashCopyBtn('copy-code-btn'); showToast('已复制代码 \u2713'); }
+  else showToast('复制失败，请手动选择文本');
+}
+
+// ── Start ──
+initPyodide();
+</script>
+</body>
+</html>
