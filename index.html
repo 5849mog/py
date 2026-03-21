@@ -504,9 +504,9 @@ print(f"π 的值: {math.pi:.10f}")
 
   <!-- Toolbar (above keyboard / at bottom) -->
   <div id="toolbar">
-    <button class="run-btn loading" id="run-btn" onclick="runCode()">
-      <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-      运行
+    <button class="run-btn loading" id="run-btn" onclick="toggleRun()">
+      <svg id="run-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      <span id="run-label">运行</span>
     </button>
     <div class="toolbar-spacer"></div>
     <div class="toolbar-icon-btn" onclick="insertText('\t')" title="Tab">
@@ -653,13 +653,32 @@ mpl.rcParams['axes.unicode_minus'] = False
   }
 }
 
-// ── Run code ──
+// ── Run / Stop ──
+let _stopRequested = false;
+function toggleRun() { if (isRunning) { _stopRequested = true; } else { runCode(); } }
+function setRunBtn(running) {
+  const btn = document.getElementById('run-btn');
+  const icon = document.getElementById('run-icon');
+  const label = document.getElementById('run-label');
+  if (running) {
+    btn.classList.remove('loading');
+    icon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+    label.textContent = '停止';
+    btn.style.background = 'var(--red)';
+  } else {
+    icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+    label.textContent = '运行';
+    btn.style.background = '';
+  }
+}
+
 async function runCode() {
   if (!pyodide || isRunning) return;
   const code = document.getElementById('editor').value;
   if (!code.trim()) { showToast('请输入代码'); return; }
   isRunning = true;
-  document.getElementById('run-btn').classList.add('loading');
+  _stopRequested = false;
+  setRunBtn(true);
   setStatus('loading', '运行中');
   if (settings.clearBeforeRun) clearOutput();
 
@@ -715,10 +734,10 @@ builtins.input = _custom_input
 
   try {
     // ── 自动检测并安装缺失的包 ──
-    const importLines = code.match(/^(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gm) || [];
+    const importLines = code.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gm) || [];
     const pkgSet = new Set();
     importLines.forEach(line => {
-      const m = line.match(/^(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+      const m = line.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
       if (m) pkgSet.add(m[1]);
     });
     // 标准库 + 已预装的包，无需尝试安装
@@ -814,26 +833,53 @@ base64.b64encode(buf.read()).decode('utf-8')
     appendOutput(`\n✓ 运行完成，耗时 ${elapsed}s`, 'success');
     setStatus('ready', '就绪');
   } catch(e) {
-    const msg = e.message || String(e);
-    appendOutput('\n' + msg, 'stderr');
-    setStatus('error', '出错');
-    setTimeout(() => setStatus('ready', '就绪'), 2500);
+    if (_stopRequested) {
+      appendOutput('\n⏹ 已手动停止执行', 'info');
+      setStatus('ready', '就绪');
+    } else {
+      // 提取最关键的错误行，过滤 pyodide 内部堆栈
+      const raw = e.message || String(e);
+      const lines = raw.split('\n');
+      const execIdx = lines.findIndex(l => l.includes('<exec>'));
+      const relevant = execIdx >= 0 ? lines.slice(execIdx) : lines.slice(-8);
+      appendOutput('\n' + relevant.join('\n'), 'stderr');
+      setStatus('error', '出错');
+      setTimeout(() => setStatus('ready', '就绪'), 3000);
+    }
   }
   isRunning = false;
-  document.getElementById('run-btn').classList.remove('loading');
-  scrollOutput();
+  _stopRequested = false;
+  setRunBtn(false);
 }
 
 // ── Output helpers ──
+let _outputRaf = null;
+
 function appendOutput(text, cls) {
   const el = document.getElementById('output-content');
-  // Remove placeholder
   const ph = el.querySelector('.output-placeholder');
   if (ph) ph.remove();
-  const span = document.createElement('span');
-  span.className = 'out-line' + (cls ? ' ' + cls : '');
-  span.textContent = text;
-  el.appendChild(span);
+  // 按换行分割逐行渲染，避免 print 分片导致的乱行
+  const parts = text.split('\n');
+  parts.forEach((part, i) => {
+    const isLast = i === parts.length - 1;
+    // 末尾空串不单独建行，但若 lastChild 未换行可追加
+    if (isLast && part === '') return;
+    // 若上一个 span 同类且未结束，直接追加
+    const prev = el.lastChild;
+    if (i === 0 && prev && prev._lineOpen && prev._cls === (cls||'')) {
+      prev.textContent += part;
+      if (!isLast) { prev.textContent += '\n'; prev._lineOpen = false; }
+    } else {
+      const span = document.createElement('span');
+      span.className = 'out-line' + (cls ? ' ' + cls : '');
+      span.textContent = part + (!isLast ? '\n' : '');
+      span._cls = cls || '';
+      span._lineOpen = isLast; // 最后一段可能没换行
+      el.appendChild(span);
+    }
+  });
+  scrollOutput();
 }
 
 function clearOutput() {
@@ -842,7 +888,8 @@ function clearOutput() {
 
 function scrollOutput() {
   const s = document.getElementById('output-scroll');
-  s.scrollTop = s.scrollHeight;
+  if (_outputRaf) return;
+  _outputRaf = requestAnimationFrame(() => { s.scrollTop = s.scrollHeight; _outputRaf = null; });
 }
 
 // ── Status ──
@@ -1060,7 +1107,7 @@ async function smartCopy(text) {
   return ok;
 }
 
-function flashCopyBtn(id, svgInner) {
+function flashCopyBtn(id) {
   const btn = document.getElementById(id);
   if (!btn) return;
   const orig = btn.innerHTML;
