@@ -1111,10 +1111,16 @@ mpl.rcParams['axes.unicode_minus'] = False
       outputEl.appendChild(wrap2);
     }
 
-    // ── 渲染完成后再清理本次新增变量，防止污染下一次运行 ──
-    // 用函数隔离，避免 _k / _keep 等临时变量写入 __main__
+    // ── 渲染完成后清理本次新增的用户变量，防止污染下一次运行 ──
+    // 保留所有以 _pyrunner_ / _PNG_ / _JPG_ / _b64 / _io 等开头的内部工具名
+    const _INTERNAL_PREFIX = ['_pyrunner_', '_PNG_SIG', '_JPG_SIG', '_GIF_SIG',
+      '_BMP_SIG', '_WEBP_SIG', '_to_png_b64', '_bytes_to_b64', '_b64', '_io', '_sys'];
     const _postRunKeys = pyodide.runPython("list(vars(__main__).keys())").toJs();
-    const _newKeys = _postRunKeys.filter(k => !_preRunKeys.has(k));
+    const _newKeys = _postRunKeys.filter(k =>
+      !_preRunKeys.has(k) &&
+      !_INTERNAL_PREFIX.some(p => k.startsWith(p)) &&
+      k !== '_pr_del'
+    );
     if (_newKeys.length > 0) {
       pyodide.globals.set("_pr_del", pyodide.toPy(_newKeys));
       pyodide.runPython(
