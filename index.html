@@ -530,6 +530,9 @@ print(f"π 的值: {math.pi:.10f}")
     <div class="toolbar-icon-btn" id="copy-code-btn" onclick="copyCode()" title="复制代码">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
     </div>
+    <div class="toolbar-icon-btn" id="clear-editor-btn" onclick="clearEditor()" title="清空编辑器">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+    </div>
     <div style="width:1px;height:20px;background:var(--border);margin:0 2px;"></div>
     <div class="status-pill loading" id="status">
       <div class="status-dot pulse"></div>
@@ -1565,6 +1568,37 @@ async function copyOutput() {
   const ok = await smartCopy(text);
   if (ok) { flashCopyBtn('copy-output-btn'); showToast('已复制输出内容 \u2713'); }
   else showToast('复制失败，请手动选择文本');
+}
+
+function clearEditor() {
+  const ed = document.getElementById('editor');
+  if (!ed.value.trim()) return;
+  // 二次确认防误触
+  const btn = document.getElementById('clear-editor-btn');
+  if (btn._confirmPending) {
+    // 第二次点击：真正清空
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.style.color = '';
+    btn.title = '清空编辑器';
+    tabs[activeTab].code = '';
+    ed.value = '';
+    updateLineNumbers();
+    clearErrorHighlight();
+    saveState();
+    showToast('已清空');
+  } else {
+    // 第一次点击：进入确认态
+    btn._confirmPending = true;
+    btn.style.color = 'var(--red)';
+    btn.title = '再次点击确认清空';
+    showToast('再次点击确认清空');
+    btn._confirmTimer = setTimeout(() => {
+      btn._confirmPending = false;
+      btn.style.color = '';
+      btn.title = '清空编辑器';
+    }, 2500);
+  }
 }
 
 async function copyCode() {
