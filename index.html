@@ -869,22 +869,15 @@ mpl.rcParams['axes.unicode_minus'] = False
 `);
     }
 
-    // ── 清空 __main__ 命名空间，防止上次运行的变量（图表/图片）污染本次输出 ──
-    pyodide.runPython([
-      "import __main__, builtins as _bi, sys as _sys",
-      "_keep = set(dir(_bi)) | {'__name__','__doc__','__package__','__loader__',",
-      "         '__spec__','__builtins__','__file__','__cached__',",
-      "         '_pyrunner_collect','_pyrunner_retval',",
-      "         '_PNG_SIG','_JPG_SIG','_GIF_SIG','_BMP_SIG','_WEBP_SIG',",
-      "         '_to_png_b64','_bytes_to_b64',",
-      "         '_b64','_io','_sys'}",
-      "for _k in list(vars(__main__).keys()):",
-      "    if _k not in _keep:",
-      "        try: delattr(__main__, _k)",
-      "        except: pass",
-    ].join("\n"));
+    // ── 运行前快照 __main__ 的 key 集合 ──
+    const _preRunKeys = new Set(
+      pyodide.runPython("import __main__; list(vars(__main__).keys())").toJs()
+    );
 
     const _userResult = await pyodide.runPythonAsync(code);
+
+    // ── 图像收集必须在删变量之前，确保能扫到本次新增的图像对象 ──
+    // （删除在图像渲染完成之后进行，见下方）
 
     // ── 统一图像渲染（matplotlib / Plotly / PIL / bytes）──
     // 把所有 Python 探测逻辑注册为全局函数，一次注册多次可复用
@@ -961,7 +954,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       "        try:",
       "            import pandas as _pd",
       "            if isinstance(v, _pd.DataFrame) and len(v) > 0:",
-      "                _html = v.to_html(max_rows=50, max_cols=20, border=0, classes=\'pr-table\')",
+      "                _html = v.to_html(max_rows=50, max_cols=20, border=0, classes=\'pr-table\', justify=\'left\')",
       "                _images.append((\'__html__:\' + _html, \'html\'))",
       "                return",
       "        except Exception: pass",
@@ -1084,7 +1077,14 @@ mpl.rcParams['axes.unicode_minus'] = False
         const wrap = document.createElement('div');
         wrap.className = 'out-line image-out';
         wrap.style.cssText = 'overflow-x:auto;margin:10px 0;border:1px solid var(--border);border-radius:10px;';
-        wrap.innerHTML = `<style>.pr-table{border-collapse:collapse;font-family:var(--mono);font-size:12px;width:100%;}.pr-table th{background:var(--surface2);color:var(--text2);padding:6px 12px;text-align:left;border-bottom:1px solid var(--border);font-weight:500;}.pr-table td{padding:5px 12px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}.pr-table tr:last-child td{border-bottom:none;}.pr-table tr:hover td{background:var(--surface2);}</style>${b64.slice(9)}`;
+        // 把 <style> 注入到 <head>（只注入一次），避免泄漏进 textContent
+        if (!document.getElementById('pr-table-style')) {
+          const st = document.createElement('style');
+          st.id = 'pr-table-style';
+          st.textContent = '.pr-table{border-collapse:collapse;font-family:var(--mono);font-size:12px;width:100%;}.pr-table th{background:var(--surface2);color:var(--text2);padding:6px 12px;text-align:left;border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;}.pr-table td{padding:5px 12px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}.pr-table tr:last-child td{border-bottom:none;}.pr-table tr:hover td{background:var(--surface2);}';
+          document.head.appendChild(st);
+        }
+        wrap.innerHTML = b64.slice(9);
         outputEl.appendChild(wrap); continue;
       }
       if (b64.length < 100) continue;
@@ -1109,6 +1109,19 @@ mpl.rcParams['axes.unicode_minus'] = False
       wrap2.className = 'out-line image-out';
       wrap2.appendChild(img);
       outputEl.appendChild(wrap2);
+    }
+
+    // ── 渲染完成后再清理本次新增变量，防止污染下一次运行 ──
+    // 用函数隔离，避免 _k / _keep 等临时变量写入 __main__
+    const _postRunKeys = pyodide.runPython("list(vars(__main__).keys())").toJs();
+    const _newKeys = _postRunKeys.filter(k => !_preRunKeys.has(k));
+    if (_newKeys.length > 0) {
+      pyodide.globals.set("_pr_del", pyodide.toPy(_newKeys));
+      pyodide.runPython(
+        "import __main__\n" +
+        "(lambda keys: [delattr(__main__, k) for k in keys if hasattr(__main__, k)])(_pr_del)\n" +
+        "del _pr_del"
+      );
     }
 
     const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
