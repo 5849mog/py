@@ -2,7 +2,7 @@
   "name": "PyRunner — Python 运行平台",
   "short_name": "PyRunner",
   "description": "在浏览器中运行 Python 3.11，支持 NumPy、Pandas、Matplotlib、Plotly 等库",
-  "start_url": "./pyrunner.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
