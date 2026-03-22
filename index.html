@@ -751,8 +751,10 @@ sys.stderr = _Capture('stderr')
     window._pyrunner_write = (kind, s) => appendOutput(s, kind === 'stderr' ? 'stderr' : null);
   }
 
-  // Override input()
-  pyodide.runPython(`
+  // Override input()（只安装一次）
+  if (!window._inputInstalled) {
+    window._inputInstalled = true;
+    pyodide.runPython(`
 import builtins
 _orig_input = builtins.input
 def _custom_input(prompt=""):
@@ -760,6 +762,7 @@ def _custom_input(prompt=""):
     return js._pyrunner_input(str(prompt))
 builtins.input = _custom_input
 `);
+  }
   window._pyrunner_input = (prompt) => {
     return new Promise(resolve => {
       document.getElementById('stdin-prompt').textContent = prompt || '请输入：';
@@ -882,7 +885,7 @@ mpl.rcParams['axes.unicode_minus'] = False
     // ── 统一图像渲染（matplotlib / Plotly / PIL / bytes）──
     // 把所有 Python 探测逻辑注册为全局函数，一次注册多次可复用
     // ── 只注册一次收集函数 ──
-    if (!window._collectInstalled) { window._collectInstalled = true;
+    // 每次重新注册图像收集函数
     pyodide.runPython([
       "import sys as _sys, io as _io, base64 as _b64",
       "",
@@ -959,6 +962,29 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                return",
       "        except Exception: pass",
       "",
+      "        # pandas Series",
+      "        try:",
+      "            import pandas as _pd",
+      "            if isinstance(v, _pd.Series) and len(v) > 0:",
+      "                _dfs = v.reset_index()",
+      "                _dfs.columns = [str(c) for c in _dfs.columns]",
+      "                _html = _dfs.to_html(max_rows=50, border=0, classes='pr-table')",
+      "                _images.append(('__html__:' + _html, 'html'))",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        # seaborn FacetGrid / AxesSubplot",
+      "        try:",
+      "            _fig2 = getattr(v, 'fig', None) or getattr(v, 'figure', None)",
+      "            if _fig2 is not None and hasattr(_fig2, 'savefig') and id(_fig2) not in _seen:",
+      "                _seen.add(id(_fig2))",
+      "                _buf2 = _io.BytesIO()",
+      "                _fig2.savefig(_buf2, format='png', dpi=130, bbox_inches='tight')",
+      "                _buf2.seek(0)",
+      "                _images.append((_b64.b64encode(_buf2.read()).decode(), 'png'))",
+      "                return",
+      "        except Exception: pass",
+      "",
       "        # scikit-image ndarray (2-D gray or 3-D HxWxC)",
       "        try:",
       "            import numpy as _np",
@@ -1024,7 +1050,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       "        _absorb(_v)",
       "",
       "    return [_images, _plotlys]",
-    ].join("\n")); }
+    ].join("\n"));
 
     // 把返回值传给 Python 侧并执行收集
     pyodide.globals.set("_pyrunner_retval", _userResult ?? null);
@@ -1114,7 +1140,8 @@ mpl.rcParams['axes.unicode_minus'] = False
     // ── 渲染完成后清理本次新增的用户变量，防止污染下一次运行 ──
     // 保留所有以 _pyrunner_ / _PNG_ / _JPG_ / _b64 / _io 等开头的内部工具名
     const _INTERNAL_PREFIX = ['_pyrunner_', '_PNG_SIG', '_JPG_SIG', '_GIF_SIG',
-      '_BMP_SIG', '_WEBP_SIG', '_to_png_b64', '_bytes_to_b64', '_b64', '_io', '_sys'];
+      '_BMP_SIG', '_WEBP_SIG', '_to_png_b64', '_bytes_to_b64', '_b64', '_io', '_sys',
+      '_orig_input', '_custom_input', '_Capture', '_pr_'];
     const _postRunKeys = pyodide.runPython("list(vars(__main__).keys())").toJs();
     const _newKeys = _postRunKeys.filter(k =>
       !_preRunKeys.has(k) &&
@@ -1302,10 +1329,20 @@ document.getElementById('editor').addEventListener('keydown', (e) => {
     updateLineNumbers(); return;
   }
 
-  // Tab → 4 空格，光标落末尾
+  // Tab / Shift+Tab
   if (e.key === 'Tab') {
     e.preventDefault();
-    insertText('    '); return;
+    if (e.shiftKey) {
+      const aLines = ed.value.split('\n');
+      let pos=0, sl=0, el2=0;
+      for(let i=0;i<aLines.length;i++){if(pos<=s)sl=i;if(pos<=end)el2=i;pos+=aLines[i].length+1;}
+      let remS=0,remTotal=0;
+      for(let i=sl;i<=el2;i++){const o=aLines[i];aLines[i]=o.replace(/^ {1,4}/,'');const d=o.length-aLines[i].length;if(i===sl)remS=d;remTotal+=d;}
+      ed.value=aLines.join('\n');
+      ed.setSelectionRange(Math.max(0,s-remS),Math.max(0,end-remTotal));
+      updateLineNumbers();
+    } else { insertText('    '); }
+    return;
   }
 
   // 括号 / 引号自动补全
@@ -1387,7 +1424,7 @@ function renderTabs() {
   tabs.forEach((t, i) => {
     const div = document.createElement('div');
     div.className = 'tab' + (i === activeTab ? ' active' : '');
-    div.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:${i===activeTab?'var(--accent)':'var(--text3)'};display:inline-block;flex-shrink:0"></span>${t.name}<span class="tab-close" onclick="removeTab(event,${i})">×</span>`;
+    div.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:${i===activeTab?'var(--accent)':'var(--text3)'};display:inline-block;flex-shrink:0;margin-right:2px;"></span><span class="tab-name">${t.name}</span><span class="tab-close" onclick="removeTab(event,${i})">×</span>`;
     div.addEventListener('click', () => switchTab(i));
     div.addEventListener('dblclick', (ev) => { ev.stopPropagation(); startRenameTab(i, div); });
     bar.appendChild(div);
