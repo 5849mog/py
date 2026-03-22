@@ -652,6 +652,7 @@ async function initPyodide() {
       { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'] },
       { label: '加载机器学习库 (sklearn, sympy)...', pkgs: ['scikit-learn', 'sympy'] },
       { label: '加载网络库 (networkx, pyodide-http)...', pkgs: ['networkx', 'pyodide-http'] },
+      { label: '加载可视化扩展 (plotly)...', pkgs: ['plotly'] },
     ];
     for (const g of pkgGroups) {
       setLoadMsg(g.label);
@@ -813,7 +814,7 @@ builtins.input = _custom_input
       'sympy','PIL','Pillow','statsmodels','micropip',
       'js','pyodide','_pyodide','pyodide_http',
       // 子模块（from X import Y 只提取 X，这里列出常见顶层名）
-      'cv2','skimage','plotly','bokeh','altair','seaborn','networkx','xgboost','lightgbm','requests','pyodide_http','pyodide-http',
+      'cv2','skimage','plotly','bokeh','altair','seaborn','networkx','xgboost','lightgbm','requests','pyodide_http','pyodide-http','plotly.graph_objects','plotly.express','go','px',
       'requests','aiohttp','flask','fastapi','pydantic','attrs','tqdm',
       // ── 常见顶层别名 ──
       'np','pd','plt','sp','sns',
@@ -868,6 +869,21 @@ if os.path.exists('/tmp/NotoSansSC.otf'):
 mpl.rcParams['axes.unicode_minus'] = False
 `);
     }
+
+    // ── 清空 __main__ 命名空间，防止上次运行的变量（图表/图片）污染本次输出 ──
+    pyodide.runPython([
+      "import __main__, builtins as _bi, sys as _sys",
+      "_keep = set(dir(_bi)) | {'__name__','__doc__','__package__','__loader__',",
+      "         '__spec__','__builtins__','__file__','__cached__',",
+      "         '_pyrunner_collect','_pyrunner_retval',",
+      "         '_PNG_SIG','_JPG_SIG','_GIF_SIG','_BMP_SIG','_WEBP_SIG',",
+      "         '_to_png_b64','_bytes_to_b64',",
+      "         '_b64','_io','_sys'}",
+      "for _k in list(vars(__main__).keys()):",
+      "    if _k not in _keep:",
+      "        try: delattr(__main__, _k)",
+      "        except: pass",
+    ].join("\n"));
 
     const _userResult = await pyodide.runPythonAsync(code);
 
