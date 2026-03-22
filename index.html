@@ -652,7 +652,6 @@ async function initPyodide() {
       { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'] },
       { label: '加载机器学习库 (sklearn, sympy)...', pkgs: ['scikit-learn', 'sympy'] },
       { label: '加载网络库 (networkx, pyodide-http)...', pkgs: ['networkx', 'pyodide-http'] },
-      { label: '加载可视化扩展 (plotly)...', pkgs: ['plotly'] },
     ];
     for (const g of pkgGroups) {
       setLoadMsg(g.label);
@@ -661,7 +660,7 @@ async function initPyodide() {
 
     // ── 用 micropip 安装纯 Python 包 ──
     try {
-      await pyodide.runPythonAsync("import micropip; await micropip.install(['seaborn'])");
+      await pyodide.runPythonAsync("import micropip; await micropip.install(['seaborn', 'plotly'])");
     } catch(_) {}
 
     // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
