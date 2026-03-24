@@ -708,6 +708,27 @@ let activeTab = 0;
 let isRunning = false;
 let inputResolve = null;
 const _defSettings = { autoIndent: true, clearBeforeRun: true, showLines: true, fontSize: 13 };
+const _INITIAL_CODE = `# 欢迎使用 PyRunner！
+# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
+
+import math
+
+def fibonacci(n):
+    """生成斐波那契数列"""
+    a, b = 0, 1
+    result = []
+    for _ in range(n):
+        result.append(a)
+        a, b = b, a + b
+    return result
+
+# 基础示例
+nums = fibonacci(10)
+print("斐波那契数列:", nums)
+print(f"第 10 项: {nums[-1]}")
+print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
+print(f"π 的值: {math.pi:.10f}")
+`;
 let settings = (() => {
   try { return Object.assign({}, _defSettings, JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')); }
   catch(_) { return { ..._defSettings }; }
@@ -1365,27 +1386,6 @@ function setStatus(kind, text) {
 // ── Monaco Editor 实例 ──
 let monacoEditor = null;
 let _errDecorations = [];
-const _INITIAL_CODE = `# 欢迎使用 PyRunner！
-# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
-
-import math
-
-def fibonacci(n):
-    """生成斐波那契数列"""
-    a, b = 0, 1
-    result = []
-    for _ in range(n):
-        result.append(a)
-        a, b = b, a + b
-    return result
-
-# 基础示例
-nums = fibonacci(10)
-print("斐波那契数列:", nums)
-print(f"第 10 项: {nums[-1]}")
-print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
-print(f"π 的值: {math.pi:.10f}")
-`;
 
 function _getMonacoTheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'pyrunner-dark' : 'pyrunner-light';
