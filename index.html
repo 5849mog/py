@@ -708,6 +708,27 @@ let activeTab = 0;
 let isRunning = false;
 let inputResolve = null;
 const _defSettings = { autoIndent: true, clearBeforeRun: true, showLines: true, fontSize: 13 };
+const _INITIAL_CODE = `# 欢迎使用 PyRunner！
+# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
+
+import math
+
+def fibonacci(n):
+    """生成斐波那契数列"""
+    a, b = 0, 1
+    result = []
+    for _ in range(n):
+        result.append(a)
+        a, b = b, a + b
+    return result
+
+# 基础示例
+nums = fibonacci(10)
+print("斐波那契数列:", nums)
+print(f"第 10 项: {nums[-1]}")
+print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
+print(f"π 的值: {math.pi:.10f}")
+`;
 let settings = (() => {
   try { return Object.assign({}, _defSettings, JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')); }
   catch(_) { return { ..._defSettings }; }
@@ -741,9 +762,12 @@ setInterval(saveState, 3000);
 
 // ── Pyodide init ──
 async function initPyodide() {
-  // Monaco 与 Pyodide 并行加载
+  // Monaco 与 Pyodide 并行加载（Monaco 失败时不阻塞 Python 初始化）
   const _initCode = (tabs && tabs[activeTab]) ? tabs[activeTab].code : (_INITIAL_CODE || '');
-  initMonaco(_initCode);
+  const _monacoReady = initMonaco(_initCode).catch((e) => {
+    console.error('[Monaco] init failed:', e);
+    showToast('编辑器加载失败，已降级为仅运行模式');
+  });
   try {
     const setLoadMsg = (m, pct) => { const el = document.getElementById('loader-text'); if(el) el.textContent = m; if(pct!==undefined){const f=document.getElementById('loader-fill');if(f)f.style.width=pct+'%';} };
     setLoadMsg('正在初始化 Python 运行时...');
@@ -798,6 +822,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       document.getElementById('loading-overlay').style.opacity = '0';
       setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
     }, 300);
+    await _monacoReady;
   } catch(e) {
     setStatus('error', '加载失败');
     appendOutput('⚠ Pyodide 加载失败，请检查网络连接\n' + e, 'stderr');
@@ -1361,35 +1386,38 @@ function setStatus(kind, text) {
 // ── Monaco Editor 实例 ──
 let monacoEditor = null;
 let _errDecorations = [];
-const _INITIAL_CODE = `# 欢迎使用 PyRunner！
-# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
-
-import math
-
-def fibonacci(n):
-    """生成斐波那契数列"""
-    a, b = 0, 1
-    result = []
-    for _ in range(n):
-        result.append(a)
-        a, b = b, a + b
-    return result
-
-# 基础示例
-nums = fibonacci(10)
-print("斐波那契数列:", nums)
-print(f"第 10 项: {nums[-1]}")
-print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
-print(f"π 的值: {math.pi:.10f}")
-`;
 
 function _getMonacoTheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'pyrunner-dark' : 'pyrunner-light';
 }
 
+function ensureMonacoLoader() {
+  if (window.require && window.require.config) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const exist = document.querySelector('script[data-monaco-loader="1"]');
+    if (exist) {
+      exist.addEventListener('load', () => resolve(), { once: true });
+      exist.addEventListener('error', () => reject(new Error('Monaco loader load failed')), { once: true });
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.47.0/min/vs/loader.js';
+    s.async = true;
+    s.dataset.monacoLoader = '1';
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Monaco loader load failed'));
+    document.head.appendChild(s);
+  });
+}
+
 function initMonaco(initialCode) {
-  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.47.0/min/vs' } });
-  require(['vs/editor/editor.main'], () => {
+  return ensureMonacoLoader().then(() => new Promise((resolve, reject) => {
+    if (!window.require || !window.require.config) {
+      reject(new Error('Monaco AMD loader unavailable'));
+      return;
+    }
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.47.0/min/vs' } });
+    require(['vs/editor/editor.main'], () => {
     // ── 自定义主题 ──
     monaco.editor.defineTheme('pyrunner-light', {
       base: 'vs', inherit: true,
@@ -1526,7 +1554,9 @@ function initMonaco(initialCode) {
     if (settings.fontSize) monacoEditor.updateOptions({ fontSize: settings.fontSize });
 
     console.log('[Monaco] Ready');
-  });
+    resolve();
+  }, (err) => reject(err || new Error('Monaco main module load failed')));
+  }));
 }
 
 // ── 错误行高亮（Monaco decorations）──
