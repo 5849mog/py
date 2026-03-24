@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.47.0/min/vs/loader.js"></script>
 <style>
   :root {
     --bg: #F7F5F2;
@@ -276,35 +277,14 @@
   }
   #resizer:hover::after, #resizer.dragging::after { background: var(--accent); }
 
-  /* ── Code editor ── */
+  /* ── Monaco Editor ── */
   #code-wrap {
-    flex: 1; min-height: 120px; overflow: hidden; display: flex;
-    flex-direction: column; position: relative; background: var(--surface);
+    flex: 1; min-height: 120px; overflow: hidden;
+    display: flex; flex-direction: column;
   }
-  #editor {
-    flex: 1; width: 100%; min-height: 0; resize: none; border: none; outline: none;
-    background: var(--surface);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 13px; line-height: 1.8;
-    padding: 14px 16px 80px 52px;
-    tab-size: 4; -moz-tab-size: 4;
-    white-space: pre;
-    overflow-x: auto; overflow-y: auto;
-    caret-color: var(--accent);
-    -webkit-overflow-scrolling: touch;
-  }
-  #editor::selection { background: rgba(201,107,58,0.15); }
-  #line-numbers {
-    position: absolute; left: 0; top: 0; bottom: 0;
-    width: 42px; padding: 14px 8px 14px 0;
-    font-family: var(--mono); font-size: 13px; line-height: 1.8;
-    text-align: right; color: var(--text3);
-    pointer-events: none; user-select: none;
-    background: var(--surface2);
-    border-right: 1px solid var(--border);
-    overflow: hidden;
-  }
+  #monaco-editor { flex: 1; width: 100%; }
+  .monaco-error-line { background: rgba(176,40,40,0.10) !important; }
+  .monaco-editor .view-overlays .current-line { border-color: var(--border) !important; }
 
   /* ── Output panel ── */
   #output-panel {
@@ -590,30 +570,9 @@
   <!-- Main area -->
   <div id="main">
     <div id="editor-panel">
-      <!-- Code editor -->
+      <!-- Monaco Editor -->
       <div id="code-wrap">
-        <div id="line-numbers">1</div>
-        <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"># 欢迎使用 PyRunner！
-# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
-
-import math
-
-def fibonacci(n):
-    """生成斐波那契数列"""
-    a, b = 0, 1
-    result = []
-    for _ in range(n):
-        result.append(a)
-        a, b = b, a + b
-    return result
-
-# 基础示例
-nums = fibonacci(10)
-print("斐波那契数列:", nums)
-print(f"第 10 项: {nums[-1]}")
-print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
-print(f"π 的值: {math.pi:.10f}")
-</textarea>
+        <div id="monaco-editor"></div>
       </div>
 
       <!-- Resizer -->
@@ -760,7 +719,7 @@ function saveSettings() {
 // ── 持久化（localStorage）──
 function saveState() {
   try {
-    tabs[activeTab].code = document.getElementById('editor').value;
+    if (monacoEditor) tabs[activeTab].code = monacoEditor.getValue();
     localStorage.setItem('pyrunner_tabs', JSON.stringify(tabs));
     localStorage.setItem('pyrunner_active', activeTab);
   } catch(_) {}
@@ -773,16 +732,18 @@ function loadState() {
   return null;
 }
 const _savedState = loadState();
-let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: document.getElementById('editor').value }];
+let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: _INITIAL_CODE || '' }];
 if (_savedState) {
   activeTab = Math.min(_savedState.active, tabs.length - 1);
-  document.getElementById('editor').value = tabs[activeTab].code;
 }
 // 每 3 秒自动保存
 setInterval(saveState, 3000);
 
 // ── Pyodide init ──
 async function initPyodide() {
+  // Monaco 与 Pyodide 并行加载
+  const _initCode = (tabs && tabs[activeTab]) ? tabs[activeTab].code : (_INITIAL_CODE || '');
+  initMonaco(_initCode);
   try {
     const setLoadMsg = (m, pct) => { const el = document.getElementById('loader-text'); if(el) el.textContent = m; if(pct!==undefined){const f=document.getElementById('loader-fill');if(f)f.style.width=pct+'%';} };
     setLoadMsg('正在初始化 Python 运行时...');
@@ -865,7 +826,7 @@ function setRunBtn(running) {
 
 async function runCode() {
   if (!pyodide || isRunning) return;
-  const code = document.getElementById('editor').value;
+  const code = monacoEditor ? monacoEditor.getValue() : '';
   if (!code.trim()) { showToast('请输入代码'); return; }
   isRunning = true;
   _stopRequested = false;
@@ -1016,6 +977,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 `);
     }
 
+    // ── 运行前同步编辑器内容 ──
+    if (monacoEditor) tabs[activeTab].code = monacoEditor.getValue();
     // ── 运行前快照 __main__ 的 key 集合 ──
     const _preRunKeys = new Set(
       pyodide.runPython("import __main__; list(vars(__main__).keys())").toJs()
@@ -1395,120 +1358,219 @@ function setStatus(kind, text) {
   dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
 }
 
-// ── 错误行高亮 ──
-let _errLineEl = null;
+// ── Monaco Editor 实例 ──
+let monacoEditor = null;
+let _errDecorations = [];
+const _INITIAL_CODE = `# 欢迎使用 PyRunner！
+# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
+
+import math
+
+def fibonacci(n):
+    """生成斐波那契数列"""
+    a, b = 0, 1
+    result = []
+    for _ in range(n):
+        result.append(a)
+        a, b = b, a + b
+    return result
+
+# 基础示例
+nums = fibonacci(10)
+print("斐波那契数列:", nums)
+print(f"第 10 项: {nums[-1]}")
+print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
+print(f"π 的值: {math.pi:.10f}")
+`;
+
+function _getMonacoTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'pyrunner-dark' : 'pyrunner-light';
+}
+
+function initMonaco(initialCode) {
+  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.47.0/min/vs' } });
+  require(['vs/editor/editor.main'], () => {
+    // ── 自定义主题 ──
+    monaco.editor.defineTheme('pyrunner-light', {
+      base: 'vs', inherit: true,
+      rules: [
+        { token: 'comment', foreground: '9A9890', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'B85A28', fontStyle: 'bold' },
+        { token: 'keyword.operator', foreground: 'B85A28' },
+        { token: 'string', foreground: '2A7A4A' },
+        { token: 'string.escape', foreground: '1A5CA8' },
+        { token: 'number', foreground: '1A5CA8' },
+        { token: 'delimiter', foreground: '5A5750' },
+        { token: 'type.identifier', foreground: '7B3F00' },
+      ],
+      colors: {
+        'editor.background': '#FFFFFF',
+        'editor.foreground': '#1C1A17',
+        'editorLineNumber.foreground': '#C8C4BC',
+        'editorLineNumber.activeForeground': '#8A8680',
+        'editor.lineHighlightBackground': '#F7F5F200',
+        'editor.lineHighlightBorder': '#F2F0EC',
+        'editor.selectionBackground': '#C96B3A22',
+        'editor.inactiveSelectionBackground': '#C96B3A10',
+        'editorCursor.foreground': '#C96B3A',
+        'editorGutter.background': '#F2F0EC',
+        'editorIndentGuide.background1': '#E8E5DF',
+        'editorIndentGuide.activeBackground1': '#C9C5BC',
+        'editorBracketMatch.background': '#C96B3A18',
+        'editorBracketMatch.border': '#C96B3A55',
+        'scrollbarSlider.background': '#1C1A1718',
+        'scrollbarSlider.hoverBackground': '#1C1A1735',
+        'scrollbarSlider.activeBackground': '#1C1A1750',
+        'editorWidget.background': '#F7F5F2',
+        'editorWidget.border': '#E8E5DF',
+        'editorSuggestWidget.background': '#FFFFFF',
+        'editorSuggestWidget.border': '#E8E5DF',
+        'editorSuggestWidget.selectedBackground': '#F2F0EC',
+      }
+    });
+    monaco.editor.defineTheme('pyrunner-dark', {
+      base: 'vs-dark', inherit: true,
+      rules: [
+        { token: 'comment', foreground: '555250', fontStyle: 'italic' },
+        { token: 'keyword', foreground: 'E07840', fontStyle: 'bold' },
+        { token: 'keyword.operator', foreground: 'E07840' },
+        { token: 'string', foreground: '4AAF72' },
+        { token: 'string.escape', foreground: '6BA3E8' },
+        { token: 'number', foreground: '6BA3E8' },
+        { token: 'delimiter', foreground: '8A8780' },
+        { token: 'type.identifier', foreground: 'E0A840' },
+      ],
+      colors: {
+        'editor.background': '#1C1B22',
+        'editor.foreground': '#EEEAE4',
+        'editorLineNumber.foreground': '#363440',
+        'editorLineNumber.activeForeground': '#555250',
+        'editor.lineHighlightBackground': '#23222900',
+        'editor.lineHighlightBorder': '#232229',
+        'editor.selectionBackground': '#E0784028',
+        'editor.inactiveSelectionBackground': '#E0784014',
+        'editorCursor.foreground': '#E07840',
+        'editorGutter.background': '#232229',
+        'editorIndentGuide.background1': '#2C2B34',
+        'editorIndentGuide.activeBackground1': '#3A3848',
+        'editorBracketMatch.background': '#E0784022',
+        'editorBracketMatch.border': '#E0784065',
+        'scrollbarSlider.background': '#EEEAE418',
+        'scrollbarSlider.hoverBackground': '#EEEAE435',
+        'scrollbarSlider.activeBackground': '#EEEAE450',
+        'editorWidget.background': '#232229',
+        'editorWidget.border': '#2C2B34',
+        'editorSuggestWidget.background': '#1C1B22',
+        'editorSuggestWidget.border': '#2C2B34',
+        'editorSuggestWidget.selectedBackground': '#2C2B34',
+      }
+    });
+
+    monacoEditor = monaco.editor.create(document.getElementById('monaco-editor'), {
+      value: initialCode || _INITIAL_CODE,
+      language: 'python',
+      theme: _getMonacoTheme(),
+      fontSize: settings.fontSize || 13,
+      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+      fontLigatures: true,
+      lineHeight: 22,
+      tabSize: 4,
+      insertSpaces: true,
+      wordWrap: 'off',
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      automaticLayout: true,
+      autoIndent: 'advanced',
+      bracketPairColorization: { enabled: true },
+      guides: { bracketPairs: false, indentation: true },
+      renderLineHighlight: 'line',
+      selectionHighlight: true,
+      occurrencesHighlight: false,
+      hideCursorInOverviewRuler: true,
+      overviewRulerBorder: false,
+      overviewRulerLanes: 1,
+      scrollbar: { vertical: 'visible', horizontal: 'auto', verticalScrollbarSize: 5, horizontalScrollbarSize: 5 },
+      lineNumbers: 'on',
+      lineNumbersMinChars: 3,
+      glyphMargin: false,
+      folding: true,
+      showFoldingControls: 'mouseover',
+      padding: { top: 14, bottom: 60 },
+      contextmenu: true,
+      smoothScrolling: true,
+      cursorSmoothCaretAnimation: 'on',
+      cursorBlinking: 'smooth',
+      fixedOverflowWidgets: true,
+      suggest: {
+        showKeywords: true,
+        showSnippets: true,
+        showClasses: true,
+        showFunctions: true,
+      },
+    });
+
+    // Ctrl+Enter / Cmd+Enter → 运行
+    monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => toggleRun());
+
+    // 内容变化 → 同步 tabs
+    monacoEditor.onDidChangeModelContent(() => {
+      if (tabs && tabs[activeTab]) tabs[activeTab].code = monacoEditor.getValue();
+    });
+
+    // 跟随系统主题
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      monaco.editor.setTheme(_getMonacoTheme());
+    });
+
+    // 应用已保存的字体大小
+    if (settings.fontSize) monacoEditor.updateOptions({ fontSize: settings.fontSize });
+
+    console.log('[Monaco] Ready');
+  });
+}
+
+// ── 错误行高亮（Monaco decorations）──
 function highlightErrorLine(lineNo) {
   clearErrorHighlight();
-  const ed = document.getElementById('editor');
-  if (lineNo < 1 || lineNo > ed.value.split('\n').length) return;
-  const lineH = parseFloat(getComputedStyle(ed).fontSize) * 1.75;
-  const top = 14 + (lineNo - 1) * lineH - ed.scrollTop;
-  const bar = document.createElement('div');
-  bar.style.cssText = 'position:absolute;left:0;right:0;height:'+lineH+'px;top:'+top+'px;background:var(--red-bg);border-left:3px solid var(--red);pointer-events:none;z-index:2;opacity:0.7;transition:opacity 0.3s;';
-  document.getElementById('code-wrap').appendChild(bar);
-  _errLineEl = bar;
+  if (!monacoEditor) return;
+  const model = monacoEditor.getModel();
+  if (!model || lineNo < 1 || lineNo > model.getLineCount()) return;
+  _errDecorations = monacoEditor.createDecorationsCollection([{
+    range: new monaco.Range(lineNo, 1, lineNo, model.getLineLength(lineNo) + 1),
+    options: {
+      isWholeLine: true,
+      className: 'monaco-error-line',
+      overviewRuler: { color: '#E0585880', position: monaco.editor.OverviewRulerLane.Left },
+      minimap: { color: '#E0585880', position: monaco.editor.MinimapPosition.Inline },
+    }
+  }]);
+  monacoEditor.revealLineInCenter(lineNo);
 }
-function clearErrorHighlight() { if (_errLineEl) { _errLineEl.remove(); _errLineEl = null; } }
+function clearErrorHighlight() {
+  if (_errDecorations && _errDecorations.clear) _errDecorations.clear();
+  _errDecorations = [];
+}
 
-// ── Editor helpers ──
-function insertText(text, cursorOffset) {
-  const ed = document.getElementById('editor');
-  const s = ed.selectionStart, e = ed.selectionEnd;
-  const before = ed.value.substring(0, s);
-  const after = ed.value.substring(e);
-  ed.value = before + text + after;
-  // cursorOffset: 从插入点算起的偏移；undefined = 末尾
-  const pos = cursorOffset !== undefined ? s + cursorOffset : s + text.length;
-  ed.setSelectionRange(pos, pos);
-  ed.focus();
-  updateLineNumbers();
+// ── Editor helpers（通过 Monaco API）──
+function insertText(text) {
+  if (!monacoEditor) return;
+  const sel = monacoEditor.getSelection();
+  monacoEditor.executeEdits('toolbar', [{ range: sel, text, forceMoveMarkers: true }]);
+  // 成对符号：光标落中间
+  if (['()', '[]', '{}', '""', "''"].includes(text)) {
+    const pos = monacoEditor.getPosition();
+    monacoEditor.setPosition({ lineNumber: pos.lineNumber, column: pos.column - 1 });
+  }
+  monacoEditor.focus();
 }
 
 function undoCode() {
-  document.getElementById('editor').focus();
-  document.execCommand('undo');
+  if (!monacoEditor) return;
+  monacoEditor.trigger('toolbar', 'undo', null);
+  monacoEditor.focus();
 }
 
-// ── Line numbers ──
-function updateLineNumbers() {
-  const ed = document.getElementById('editor');
-  const lines = ed.value.split('\n').length;
-  const ln = document.getElementById('line-numbers');
-  let html = '';
-  for (let i = 1; i <= lines; i++) html += i + '\n';
-  ln.textContent = html;
-  ln.scrollTop = ed.scrollTop;
-}
-
-document.getElementById('editor').addEventListener('input', updateLineNumbers);
-document.getElementById('editor').addEventListener('scroll', () => {
-  document.getElementById('line-numbers').scrollTop = document.getElementById('editor').scrollTop;
-});
-document.getElementById('editor').addEventListener('keydown', (e) => {
-  const ed = e.target;
-  const s = ed.selectionStart, end = ed.selectionEnd;
-
-  // Ctrl+Enter / Cmd+Enter → 运行
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault(); toggleRun(); return;
-  }
-
-  // Ctrl+/ → 切换行注释
-  if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    const lines = ed.value.split('\n');
-    let pos = 0, startLine = -1, endLine = -1;
-    for (let i = 0; i < lines.length; i++) {
-      const lineEnd = pos + lines[i].length;
-      if (pos <= s && s <= lineEnd + 1) startLine = i;
-      if (pos <= end && end <= lineEnd + 1) endLine = i;
-      pos += lines[i].length + 1;
-    }
-    const allCommented = lines.slice(startLine, endLine+1).every(l => l.trimStart().startsWith('#'));
-    for (let i = startLine; i <= endLine; i++) {
-      if (allCommented) lines[i] = lines[i].replace(/^(\s*)# ?/, '$1');
-      else lines[i] = lines[i].replace(/^(\s*)/, '$1# ');
-    }
-    ed.value = lines.join('\n');
-    updateLineNumbers(); return;
-  }
-
-  // Tab / Shift+Tab
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      const aLines = ed.value.split('\n');
-      let pos=0, sl=0, el2=0;
-      for(let i=0;i<aLines.length;i++){if(pos<=s)sl=i;if(pos<=end)el2=i;pos+=aLines[i].length+1;}
-      let remS=0,remTotal=0;
-      for(let i=sl;i<=el2;i++){const o=aLines[i];aLines[i]=o.replace(/^ {1,4}/,'');const d=o.length-aLines[i].length;if(i===sl)remS=d;remTotal+=d;}
-      ed.value=aLines.join('\n');
-      ed.setSelectionRange(Math.max(0,s-remS),Math.max(0,end-remTotal));
-      updateLineNumbers();
-    } else { insertText('    '); }
-    return;
-  }
-
-  // 括号 / 引号自动补全
-  const pairs = { '(':')', '[':']', '{':'}', '"':'"', "'":"'" };
-  if (pairs[e.key] && s === end) {
-    e.preventDefault();
-    insertText(e.key + pairs[e.key], 1); return;
-  }
-  // 右括号跳过（已有时不重复输入）
-  const closing = new Set([')', ']', '}']);
-  if (closing.has(e.key) && ed.value[s] === e.key) {
-    e.preventDefault();
-    ed.setSelectionRange(s+1, s+1); return;
-  }
-  // 退格删除成对括号
-  if (e.key === 'Backspace' && s === end && s > 0) {
-    const open = ed.value[s-1], close = ed.value[s];
-    if (pairs[open] === close) {
-      e.preventDefault();
-      ed.value = ed.value.substring(0, s-1) + ed.value.substring(s+1);
-      ed.setSelectionRange(s-1, s-1);
-      updateLineNumbers(); return;
+function updateLineNumbers() { /* Monaco 内置行号 */ }
     }
   }
 
@@ -1545,10 +1607,9 @@ function addTab() {
 }
 
 function switchTab(idx) {
-  tabs[activeTab].code = document.getElementById('editor').value;
+  if (monacoEditor) tabs[activeTab].code = monacoEditor.getValue();
   activeTab = idx;
-  document.getElementById('editor').value = tabs[idx].code;
-  updateLineNumbers();
+  if (monacoEditor) monacoEditor.setValue(tabs[idx].code || '');
   renderTabs();
 }
 
@@ -1557,8 +1618,7 @@ function removeTab(e, idx) {
   if (tabs.length === 1) { showToast('至少保留一个标签页'); return; }
   tabs.splice(idx, 1);
   activeTab = Math.min(activeTab, tabs.length - 1);
-  document.getElementById('editor').value = tabs[activeTab].code;
-  updateLineNumbers();
+  if (monacoEditor) monacoEditor.setValue(tabs[activeTab].code || '');
   renderTabs();
 }
 
@@ -1621,8 +1681,7 @@ function renderSnippets() {
     div.innerHTML = `<div class="snippet-icon">${s.icon}</div><div class="snippet-text"><div class="snippet-name">${s.name}</div><div class="snippet-desc">${s.desc}</div></div><span class="snippet-arrow">›</span>`;
     div.onclick = () => {
       tabs[activeTab].code = s.code;
-      document.getElementById('editor').value = s.code;
-      updateLineNumbers();
+      if (monacoEditor) monacoEditor.setValue(s.code);
       closeSnippets();
       showToast('已加载: ' + s.name);
     };
@@ -1650,9 +1709,9 @@ document.getElementById('settings-btn').onclick = () => {
 
 // ── Settings ──
 function applyFontSize(v) {
-  document.getElementById('editor').style.fontSize = v + 'px';
-  document.getElementById('line-numbers').style.fontSize = v + 'px';
-  settings.fontSize = parseInt(v); saveSettings();
+  const sz = parseInt(v);
+  if (monacoEditor) monacoEditor.updateOptions({ fontSize: sz });
+  settings.fontSize = sz; saveSettings();
 }
 function toggleSetting(key) {
   const map = { 'auto-indent': 'autoIndent', 'clear-before-run': 'clearBeforeRun', 'show-lines': 'showLines' };
@@ -1661,8 +1720,7 @@ function toggleSetting(key) {
   saveSettings();
   document.getElementById(key + '-toggle').classList.toggle('on', settings[k]);
   if (key === 'show-lines') {
-    document.getElementById('line-numbers').style.display = settings.showLines ? '' : 'none';
-    document.getElementById('editor').style.paddingLeft = settings.showLines ? '50px' : '14px';
+    if (monacoEditor) monacoEditor.updateOptions({ lineNumbers: settings.showLines ? 'on' : 'off' });
   }
 }
 
@@ -1712,8 +1770,7 @@ async function copyOutput() {
 }
 
 function clearEditor() {
-  const ed = document.getElementById('editor');
-  if (!ed.value.trim()) return;
+  if (!monacoEditor || !monacoEditor.getValue().trim()) return;
   // 二次确认防误触
   const btn = document.getElementById('clear-editor-btn');
   if (btn._confirmPending) {
@@ -1723,8 +1780,7 @@ function clearEditor() {
     btn.style.color = '';
     btn.title = '清空编辑器';
     tabs[activeTab].code = '';
-    ed.value = '';
-    updateLineNumbers();
+    if (monacoEditor) monacoEditor.setValue('');
     clearErrorHighlight();
     saveState();
     showToast('已清空');
@@ -1743,7 +1799,7 @@ function clearEditor() {
 }
 
 async function copyCode() {
-  const text = document.getElementById('editor').value;
+  const text = monacoEditor ? monacoEditor.getValue() : '';
   if (!text.trim()) { showToast('代码为空'); return; }
   const ok = await smartCopy(text);
   if (ok) { flashCopyBtn('copy-code-btn'); showToast('已复制代码 \u2713'); }
@@ -1752,11 +1808,10 @@ async function copyCode() {
 
 // ── 应用已保存的设置 ──
 (function() {
-  applyFontSize(settings.fontSize);
-  document.getElementById('font-size-select').value = settings.fontSize;
+  // Monaco 字体大小在 initMonaco 里应用
+  document.getElementById('font-size-select').value = settings.fontSize || 13;
   if (!settings.showLines) {
-    document.getElementById('line-numbers').style.display = 'none';
-    document.getElementById('editor').style.paddingLeft = '14px';
+    if (monacoEditor) monacoEditor.updateOptions({ lineNumbers: 'off' });
     document.getElementById('show-lines-toggle').classList.remove('on');
   }
   if (!settings.autoIndent) document.getElementById('auto-indent-toggle').classList.remove('on');
