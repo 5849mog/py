@@ -764,12 +764,15 @@ setInterval(saveState, 3000);
 async function initPyodide() {
   // Monaco 与 Pyodide 并行加载（Monaco 失败时不阻塞 Python 初始化）
   const _initCode = (tabs && tabs[activeTab]) ? tabs[activeTab].code : (_INITIAL_CODE || '');
-  const _monacoReady = initMonaco(_initCode).catch((e) => {
-    console.error('[Monaco] init failed:', e);
-    showToast('编辑器加载失败，已降级为仅运行模式');
-  });
+  let _monacoReady = Promise.resolve();
   try {
     const setLoadMsg = (m, pct) => { const el = document.getElementById('loader-text'); if(el) el.textContent = m; if(pct!==undefined){const f=document.getElementById('loader-fill');if(f)f.style.width=pct+'%';} };
+    _monacoReady = Promise.resolve()
+      .then(() => initMonaco(_initCode))
+      .catch((e) => {
+        console.error('[Monaco] init failed:', e);
+        showToast('编辑器加载失败，已降级为仅运行模式');
+      });
     setLoadMsg('正在初始化 Python 运行时...');
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
     const pkgGroups = [
@@ -822,7 +825,8 @@ mpl.rcParams['axes.unicode_minus'] = False
       document.getElementById('loading-overlay').style.opacity = '0';
       setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
     }, 300);
-    await _monacoReady;
+    // Monaco 结果不影响主流程；异步收尾避免阻塞运行时就绪
+    void _monacoReady;
   } catch(e) {
     setStatus('error', '加载失败');
     appendOutput('⚠ Pyodide 加载失败，请检查网络连接\n' + e, 'stderr');
