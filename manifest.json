@@ -29,7 +29,7 @@
       "name": "新建代码",
       "short_name": "新建",
       "description": "打开 PyRunner 并新建标签页",
-      "url": "./pyrunner.html"
+      "url": "./index.html"
     }
   ]
 }

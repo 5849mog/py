@@ -6,7 +6,7 @@ const VERSION = 'pyrunner-v1';
 // 需要预缓存的本地文件（App Shell）
 const SHELL_CACHE = 'pyrunner-shell-v1';
 const SHELL_FILES = [
-  './pyrunner.html',
+  './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
