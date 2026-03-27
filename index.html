@@ -16,6 +16,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-python.min.js"></script>
 <style>
   :root {
     --bg: #F7F5F2;
@@ -278,32 +280,95 @@
 
   /* ── Code editor ── */
   #code-wrap {
-    flex: 1; min-height: 120px; overflow: hidden; display: flex;
-    flex-direction: column; position: relative; background: var(--surface);
-  }
-  #editor {
-    flex: 1; width: 100%; min-height: 0; resize: none; border: none; outline: none;
+    flex: 1; min-height: 120px; overflow: hidden;
+    display: flex; flex-direction: row; position: relative;
     background: var(--surface);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 13px; line-height: 1.8;
-    padding: 14px 16px 80px 52px;
-    tab-size: 4; -moz-tab-size: 4;
-    white-space: pre;
-    overflow-x: auto; overflow-y: auto;
-    caret-color: var(--accent);
-    -webkit-overflow-scrolling: touch;
   }
-  #editor::selection { background: rgba(201,107,58,0.15); }
   #line-numbers {
-    position: absolute; left: 0; top: 0; bottom: 0;
-    width: 42px; padding: 14px 8px 14px 0;
+    flex-shrink: 0; width: 44px;
+    padding: 14px 8px 14px 0;
     font-family: var(--mono); font-size: 13px; line-height: 1.8;
     text-align: right; color: var(--text3);
-    pointer-events: none; user-select: none;
     background: var(--surface2);
     border-right: 1px solid var(--border);
-    overflow: hidden;
+    user-select: none; pointer-events: none;
+    overflow: hidden; white-space: pre;
+  }
+  #highlight-wrap {
+    flex: 1; position: relative; overflow: hidden;
+    display: flex;
+  }
+  /* highlight pre 作视觉层，textarea 作输入层，完全重叠 */
+  #highlight-pre, #editor {
+    position: absolute; inset: 0;
+    margin: 0; padding: 14px 14px 60px 14px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.8;
+    tab-size: 4; -moz-tab-size: 4;
+    white-space: pre; overflow-wrap: normal;
+    word-wrap: normal;
+  }
+  #highlight-pre {
+    background: transparent; border: none;
+    overflow: hidden; pointer-events: none;
+    z-index: 1; color: transparent; /* 文字透明，只显示 span 颜色 */
+  }
+  #highlight-code {
+    font-family: inherit; font-size: inherit;
+    line-height: inherit; display: block;
+    background: none !important;
+  }
+  #editor {
+    background: transparent; border: none; outline: none;
+    resize: none; z-index: 2;
+    color: var(--text); caret-color: var(--accent);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    /* 字色设为半透明，Prism token 的颜色透过来 */
+    color: transparent;
+    caret-color: var(--accent);
+    -webkit-text-fill-color: transparent;
+  }
+  /* 选中区域必须可见 */
+  #editor::selection { background: rgba(201,107,58,0.2); -webkit-text-fill-color: transparent; }
+
+  /* ── Prism Python 语法配色（light）── */
+  #highlight-code .token.comment, #highlight-code .token.prolog { color: #9A9890; font-style: italic; }
+  #highlight-code .token.keyword { color: #B85A28; font-weight: 600; }
+  #highlight-code .token.builtin { color: #1A5CA8; }
+  #highlight-code .token.string, #highlight-code .token.string-interpolation { color: #2A7A4A; }
+  #highlight-code .token.number { color: #1A5CA8; }
+  #highlight-code .token.operator { color: #5A5750; }
+  #highlight-code .token.punctuation { color: #8A8680; }
+  #highlight-code .token.function { color: #7B3F00; }
+  #highlight-code .token.class-name { color: #7B3F00; font-weight: 600; }
+  #highlight-code .token.decorator { color: #9A6A10; }
+  #highlight-code .token.boolean, #highlight-code .token.constant { color: #B85A28; }
+  #highlight-code .token.important { color: #B02828; font-weight: 600; }
+  /* 未命中 token 的普通文字 */
+  #highlight-code { color: #1C1A17; }
+
+  @media (prefers-color-scheme: dark) {
+    #highlight-code .token.comment, #highlight-code .token.prolog { color: #555250; }
+    #highlight-code .token.keyword { color: #E07840; }
+    #highlight-code .token.builtin { color: #6BA3E8; }
+    #highlight-code .token.string, #highlight-code .token.string-interpolation { color: #4AAF72; }
+    #highlight-code .token.number { color: #6BA3E8; }
+    #highlight-code .token.operator { color: #8A8780; }
+    #highlight-code .token.punctuation { color: #555250; }
+    #highlight-code .token.function { color: #E0A840; }
+    #highlight-code .token.class-name { color: #E0A840; font-weight: 600; }
+    #highlight-code .token.decorator { color: #E0A840; }
+    #highlight-code .token.boolean, #highlight-code .token.constant { color: #E07840; }
+    #highlight-code .token.important { color: #E06060; font-weight: 600; }
+    #highlight-code { color: #EEEAE4; }
+  }
+
+  /* 错误行高亮 */
+  .editor-error-line {
+    background: var(--red-bg);
+    border-left: 3px solid var(--red);
+    display: block;
+    margin-left: -14px; padding-left: 11px;
   }
 
   /* ── Output panel ── */
@@ -392,7 +457,6 @@
   .sheet-title { font-size: 15px; font-weight: 600; flex: 1; letter-spacing: -0.2px; }
 
   /* ── Snippets ── */
-  #snippets-overlay { max-height: 78vh; }
   #snippets-drawer { max-height: 78vh; }
   #snippets-list { overflow-y: auto; padding: 4px 10px 16px; flex: 1; }
   .snippet-item {
@@ -590,30 +654,13 @@
   <!-- Main area -->
   <div id="main">
     <div id="editor-panel">
-      <!-- Code editor -->
+      <!-- Code editor: textarea + Prism highlight overlay -->
       <div id="code-wrap">
-        <div id="line-numbers">1</div>
-        <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"># 欢迎使用 PyRunner！
-# 支持完整的 Python 3.11 环境 + NumPy / Pandas / Matplotlib 等库
-
-import math
-
-def fibonacci(n):
-    """生成斐波那契数列"""
-    a, b = 0, 1
-    result = []
-    for _ in range(n):
-        result.append(a)
-        a, b = b, a + b
-    return result
-
-# 基础示例
-nums = fibonacci(10)
-print("斐波那契数列:", nums)
-print(f"第 10 项: {nums[-1]}")
-print(f"黄金比例近似: {nums[-1] / nums[-2]:.6f}")
-print(f"π 的值: {math.pi:.10f}")
-</textarea>
+        <div id="line-numbers"></div>
+        <div id="highlight-wrap">
+          <pre id="highlight-pre" aria-hidden="true"><code id="highlight-code" class="language-python"></code></pre>
+          <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" autocomplete="off"></textarea>
+        </div>
       </div>
 
       <!-- Resizer -->
@@ -760,7 +807,7 @@ function saveSettings() {
 // ── 持久化（localStorage）──
 function saveState() {
   try {
-    tabs[activeTab].code = document.getElementById('editor').value;
+    const _ed = document.getElementById('editor'); if(_ed) tabs[activeTab].code = _ed.value;
     localStorage.setItem('pyrunner_tabs', JSON.stringify(tabs));
     localStorage.setItem('pyrunner_active', activeTab);
   } catch(_) {}
@@ -773,22 +820,24 @@ function loadState() {
   return null;
 }
 const _savedState = loadState();
-let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: document.getElementById('editor').value }];
+let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: _INITIAL_CODE }];
 if (_savedState) {
   activeTab = Math.min(_savedState.active, tabs.length - 1);
-  document.getElementById('editor').value = tabs[activeTab].code;
 }
 // 每 3 秒自动保存
 setInterval(saveState, 3000);
 
 // ── Pyodide init ──
 async function initPyodide() {
+  // 初始化编辑器
+  const _initCode = (tabs && tabs[activeTab]) ? tabs[activeTab].code : (_INITIAL_CODE || '');
+  initEditor(_initCode);
   try {
     const setLoadMsg = (m, pct) => { const el = document.getElementById('loader-text'); if(el) el.textContent = m; if(pct!==undefined){const f=document.getElementById('loader-fill');if(f)f.style.width=pct+'%';} };
     setLoadMsg('正在初始化 Python 运行时...');
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
-    const pkgGroups = [
-      { label: '加载数值计算库 (numpy, scipy)...', pkgs: ['numpy', 'scipy', 'micropip'] },
+    const pkgGroups =[
+      { label: '加载数值计算库 (numpy, scipy)...', pkgs:['numpy', 'scipy', 'micropip'] },
       { label: '加载数据分析库 (pandas, statsmodels)...', pkgs: ['pandas', 'statsmodels'] },
       { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'] },
       { label: '加载机器学习库 (sklearn, sympy)...', pkgs: ['scikit-learn', 'sympy'] },
@@ -865,7 +914,7 @@ function setRunBtn(running) {
 
 async function runCode() {
   if (!pyodide || isRunning) return;
-  const code = document.getElementById('editor').value;
+  const code = document.getElementById('editor') ? document.getElementById('editor').value : '';
   if (!code.trim()) { showToast('请输入代码'); return; }
   isRunning = true;
   _stopRequested = false;
@@ -927,7 +976,7 @@ builtins.input = _custom_input
 
   try {
     // ── 自动检测并安装缺失的包 ──
-    const importLines = code.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gm) || [];
+    const importLines = code.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gm) ||[];
     const pkgSet = new Set();
     importLines.forEach(line => {
       const m = line.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
@@ -1007,7 +1056,7 @@ import matplotlib as mpl, matplotlib.font_manager as fm
 import os
 # 如果 OTF 文件存在但字体未注册（例如页面缓存），重新注册
 if os.path.exists('/tmp/NotoSansSC.otf'):
-    _registered = [f.name for f in fm.fontManager.ttflist if 'Noto Sans SC' in f.name]
+    _registered =[f.name for f in fm.fontManager.ttflist if 'Noto Sans SC' in f.name]
     if not _registered:
         fe = fm.FontEntry(fname='/tmp/NotoSansSC.otf', name='Noto Sans SC')
         fm.fontManager.ttflist.insert(0, fe)
@@ -1016,6 +1065,8 @@ mpl.rcParams['axes.unicode_minus'] = False
 `);
     }
 
+    // ── 运行前同步编辑器内容 ──
+    const _edSync = document.getElementById('editor'); if(_edSync) tabs[activeTab].code = _edSync.value;
     // ── 运行前快照 __main__ 的 key 集合 ──
     const _preRunKeys = new Set(
       pyodide.runPython("import __main__; list(vars(__main__).keys())").toJs()
@@ -1058,8 +1109,8 @@ mpl.rcParams['axes.unicode_minus'] = False
       "    return _b64.b64encode(raw).decode(), mime",
       "",
       "def _pyrunner_collect(extra=None):",
-      "    _images  = []   # list of (b64, mime)",
-      "    _plotlys = []   # list of json str",
+      "    _images  =[]   # list of (b64, mime)",
+      "    _plotlys =[]   # list of json str",
       "    _seen    = set()",
       "",
       "    import __main__",
@@ -1193,14 +1244,14 @@ mpl.rcParams['axes.unicode_minus'] = False
       "    for _v in list(_ns.values()):",
       "        _absorb(_v)",
       "",
-      "    return [_images, _plotlys]",
+      "    return[_images, _plotlys]",
     ].join("\n"));
 
     // 把返回值传给 Python 侧并执行收集
     pyodide.globals.set("_pyrunner_retval", _userResult ?? null);
     const _raw = pyodide.runPython("_pyrunner_collect(extra=_pyrunner_retval)");
     const _imgPairs   = _raw.get(0).toJs();   // [[b64, mime], ...]
-    const plotlyJsons = _raw.get(1).toJs();   // [json_str, ...]
+    const plotlyJsons = _raw.get(1).toJs();   //[json_str, ...]
     _raw.destroy();
     // 兼容旧渲染代码：提取 b64 列表
     const b64List = _imgPairs.map(p => Array.isArray(p) ? p[0] : p);
@@ -1283,7 +1334,7 @@ mpl.rcParams['axes.unicode_minus'] = False
 
     // ── 渲染完成后清理本次新增的用户变量，防止污染下一次运行 ──
     // 保留所有以 _pyrunner_ / _PNG_ / _JPG_ / _b64 / _io 等开头的内部工具名
-    const _INTERNAL_PREFIX = ['_pyrunner_', '_PNG_SIG', '_JPG_SIG', '_GIF_SIG',
+    const _INTERNAL_PREFIX =['_pyrunner_', '_PNG_SIG', '_JPG_SIG', '_GIF_SIG',
       '_BMP_SIG', '_WEBP_SIG', '_to_png_b64', '_bytes_to_b64', '_b64', '_io', '_sys',
       '_orig_input', '_custom_input', '_Capture', '_pr_'];
     const _postRunKeys = pyodide.runPython("list(vars(__main__).keys())").toJs();
@@ -1296,7 +1347,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       pyodide.globals.set("_pr_del", pyodide.toPy(_newKeys));
       pyodide.runPython(
         "import __main__\n" +
-        "(lambda keys: [delattr(__main__, k) for k in keys if hasattr(__main__, k)])(_pr_del)\n" +
+        "(lambda keys:[delattr(__main__, k) for k in keys if hasattr(__main__, k)])(_pr_del)\n" +
         "del _pr_del"
       );
     }
@@ -1395,134 +1446,194 @@ function setStatus(kind, text) {
   dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
 }
 
-// ── 错误行高亮 ──
-let _errLineEl = null;
-function highlightErrorLine(lineNo) {
-  clearErrorHighlight();
-  const ed = document.getElementById('editor');
-  if (lineNo < 1 || lineNo > ed.value.split('\n').length) return;
-  const lineH = parseFloat(getComputedStyle(ed).fontSize) * 1.75;
-  const top = 14 + (lineNo - 1) * lineH - ed.scrollTop;
-  const bar = document.createElement('div');
-  bar.style.cssText = 'position:absolute;left:0;right:0;height:'+lineH+'px;top:'+top+'px;background:var(--red-bg);border-left:3px solid var(--red);pointer-events:none;z-index:2;opacity:0.7;transition:opacity 0.3s;';
-  document.getElementById('code-wrap').appendChild(bar);
-  _errLineEl = bar;
-}
-function clearErrorHighlight() { if (_errLineEl) { _errLineEl.remove(); _errLineEl = null; } }
+// ── 初始代码 ──
+const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击「代码片段」探索更多示例。")\n';
 
-// ── Editor helpers ──
-function insertText(text, cursorOffset) {
-  const ed = document.getElementById('editor');
-  const s = ed.selectionStart, e = ed.selectionEnd;
-  const before = ed.value.substring(0, s);
-  const after = ed.value.substring(e);
-  ed.value = before + text + after;
-  // cursorOffset: 从插入点算起的偏移；undefined = 末尾
-  const pos = cursorOffset !== undefined ? s + cursorOffset : s + text.length;
-  ed.setSelectionRange(pos, pos);
-  ed.focus();
-  updateLineNumbers();
+// ── 语法高亮（Prism.js）──
+let _highlightRaf = null;
+function highlightCode() {
+  if (_highlightRaf) return;
+  _highlightRaf = requestAnimationFrame(() => {
+    _highlightRaf = null;
+    const ed = document.getElementById('editor');
+    const code = document.getElementById('highlight-code');
+    if (!ed || !code) return;
+    // 转义 HTML 特殊字符（必须在 Prism 之前）
+    const raw = ed.value;
+    if (typeof Prism !== 'undefined') {
+      code.innerHTML = Prism.highlight(raw, Prism.languages.python, 'python');
+    } else {
+      // Prism 未加载时显示纯文字
+      code.textContent = raw;
+    }
+    // 同步 pre 的滚动位置
+    const pre = document.getElementById('highlight-pre');
+    if (pre) { pre.scrollTop = ed.scrollTop; pre.scrollLeft = ed.scrollLeft; }
+    updateLineNumbers();
+  });
 }
 
-function undoCode() {
-  document.getElementById('editor').focus();
-  document.execCommand('undo');
-}
-
-// ── Line numbers ──
+// ── 行号 ──
 function updateLineNumbers() {
   const ed = document.getElementById('editor');
-  const lines = ed.value.split('\n').length;
   const ln = document.getElementById('line-numbers');
-  let html = '';
-  for (let i = 1; i <= lines; i++) html += i + '\n';
-  ln.textContent = html;
+  if (!ed || !ln) return;
+  const lineCount = (ed.value.match(/\n/g) ||[]).length + 1;
+  if (ln._lastCount === lineCount) return;
+  ln._lastCount = lineCount;
+  let s = '';
+  for (let i = 1; i <= lineCount; i++) s += i + '\n';
+  ln.textContent = s;
   ln.scrollTop = ed.scrollTop;
 }
 
-document.getElementById('editor').addEventListener('input', updateLineNumbers);
-document.getElementById('editor').addEventListener('scroll', () => {
-  document.getElementById('line-numbers').scrollTop = document.getElementById('editor').scrollTop;
-});
-document.getElementById('editor').addEventListener('keydown', (e) => {
-  const ed = e.target;
-  const s = ed.selectionStart, end = ed.selectionEnd;
+// ── 同步滚动 ──
+function syncScroll() {
+  const ed  = document.getElementById('editor');
+  const pre = document.getElementById('highlight-pre');
+  const ln  = document.getElementById('line-numbers');
+  if (!ed || !pre) return;
+  pre.scrollTop  = ed.scrollTop;
+  pre.scrollLeft = ed.scrollLeft;
+  if (ln) ln.scrollTop = ed.scrollTop;
+}
 
-  // Ctrl+Enter / Cmd+Enter → 运行
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault(); toggleRun(); return;
+// ── 错误行高亮 ──
+let _errLineNo = 0;
+function highlightErrorLine(lineNo) {
+  clearErrorHighlight();
+  _errLineNo = lineNo;
+  // 重新渲染时在目标行注入 .editor-error-line class
+  _renderErrorHighlight();
+}
+function _renderErrorHighlight() {
+  if (!_errLineNo) return;
+  const ed = document.getElementById('editor');
+  const code = document.getElementById('highlight-code');
+  if (!ed || !code || typeof Prism === 'undefined') return;
+  const lines = Prism.highlight(ed.value, Prism.languages.python, 'python').split('\n');
+  if (_errLineNo >= 1 && _errLineNo <= lines.length) {
+    lines[_errLineNo - 1] = '<span class="editor-error-line">' + (lines[_errLineNo - 1] || '\u00a0') + '</span>';
   }
+  code.innerHTML = lines.join('\n');
+  // 滚动到出错行
+  const ed2 = document.getElementById('editor');
+  const lineH = parseFloat(getComputedStyle(ed2).lineHeight) || 22;
+  ed2.scrollTop = Math.max(0, (_errLineNo - 4) * lineH);
+  syncScroll();
+}
+function clearErrorHighlight() {
+  _errLineNo = 0;
+  highlightCode(); // 重新渲染去掉高亮
+}
 
-  // Ctrl+/ → 切换行注释
-  if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
-    e.preventDefault();
-    const lines = ed.value.split('\n');
-    let pos = 0, startLine = -1, endLine = -1;
-    for (let i = 0; i < lines.length; i++) {
-      const lineEnd = pos + lines[i].length;
-      if (pos <= s && s <= lineEnd + 1) startLine = i;
-      if (pos <= end && end <= lineEnd + 1) endLine = i;
-      pos += lines[i].length + 1;
+// ── Editor helpers ──
+function insertText(text) {
+  const ed = document.getElementById('editor');
+  if (!ed) return;
+  const s = ed.selectionStart, e = ed.selectionEnd;
+  ed.value = ed.value.substring(0, s) + text + ed.value.substring(e);
+  const pairMap = { '()':1, '[]':1, '{}':1, '""':1, "''":1 };
+  const cur = pairMap[text] ? s + 1 : s + text.length;
+  ed.setSelectionRange(cur, cur);
+  ed.focus();
+  highlightCode();
+  if (tabs[activeTab]) tabs[activeTab].code = ed.value;
+}
+
+function undoCode() {
+  const ed = document.getElementById('editor');
+  if (!ed) return;
+  ed.focus();
+  document.execCommand('undo');
+  highlightCode();
+}
+
+// ── 初始化编辑器 ──
+function initEditor(code) {
+  const ed = document.getElementById('editor');
+  if (!ed) return;
+  ed.value = code || _INITIAL_CODE;
+
+  // input: 高亮 + 同步 tabs
+  ed.addEventListener('input', () => {
+    if (tabs[activeTab]) tabs[activeTab].code = ed.value;
+    highlightCode();
+  });
+
+  // scroll: 同步 pre + 行号
+  ed.addEventListener('scroll', syncScroll);
+
+  // keydown 处理
+  ed.addEventListener('keydown', (e) => {
+    const s = e.target.selectionStart, end = e.target.selectionEnd;
+
+    // Ctrl/Cmd+Enter → 运行
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault(); toggleRun(); return;
     }
-    const allCommented = lines.slice(startLine, endLine+1).every(l => l.trimStart().startsWith('#'));
-    for (let i = startLine; i <= endLine; i++) {
-      if (allCommented) lines[i] = lines[i].replace(/^(\s*)# ?/, '$1');
-      else lines[i] = lines[i].replace(/^(\s*)/, '$1# ');
-    }
-    ed.value = lines.join('\n');
-    updateLineNumbers(); return;
-  }
 
-  // Tab / Shift+Tab
-  if (e.key === 'Tab') {
-    e.preventDefault();
-    if (e.shiftKey) {
-      const aLines = ed.value.split('\n');
-      let pos=0, sl=0, el2=0;
-      for(let i=0;i<aLines.length;i++){if(pos<=s)sl=i;if(pos<=end)el2=i;pos+=aLines[i].length+1;}
-      let remS=0,remTotal=0;
-      for(let i=sl;i<=el2;i++){const o=aLines[i];aLines[i]=o.replace(/^ {1,4}/,'');const d=o.length-aLines[i].length;if(i===sl)remS=d;remTotal+=d;}
-      ed.value=aLines.join('\n');
-      ed.setSelectionRange(Math.max(0,s-remS),Math.max(0,end-remTotal));
-      updateLineNumbers();
-    } else { insertText('    '); }
-    return;
-  }
-
-  // 括号 / 引号自动补全
-  const pairs = { '(':')', '[':']', '{':'}', '"':'"', "'":"'" };
-  if (pairs[e.key] && s === end) {
-    e.preventDefault();
-    insertText(e.key + pairs[e.key], 1); return;
-  }
-  // 右括号跳过（已有时不重复输入）
-  const closing = new Set([')', ']', '}']);
-  if (closing.has(e.key) && ed.value[s] === e.key) {
-    e.preventDefault();
-    ed.setSelectionRange(s+1, s+1); return;
-  }
-  // 退格删除成对括号
-  if (e.key === 'Backspace' && s === end && s > 0) {
-    const open = ed.value[s-1], close = ed.value[s];
-    if (pairs[open] === close) {
+    // Tab / Shift+Tab
+    if (e.key === 'Tab') {
       e.preventDefault();
-      ed.value = ed.value.substring(0, s-1) + ed.value.substring(s+1);
-      ed.setSelectionRange(s-1, s-1);
-      updateLineNumbers(); return;
+      if (e.shiftKey) {
+        const aLines = ed.value.split('\n');
+        let pos=0, sl=0, el2=0;
+        for(let i=0;i<aLines.length;i++){if(pos<=s)sl=i;if(pos<=end)el2=i;pos+=aLines[i].length+1;}
+        let remS=0,remTotal=0;
+        for(let i=sl;i<=el2;i++){const o=aLines[i];aLines[i]=o.replace(/^ {1,4}/,'');const d=o.length-aLines[i].length;if(i===sl)remS=d;remTotal+=d;}
+        ed.value=aLines.join('\n');
+        ed.setSelectionRange(Math.max(0,s-remS),Math.max(0,end-remTotal));
+      } else {
+        ed.value = ed.value.substring(0,s)+'    '+ed.value.substring(end);
+        ed.setSelectionRange(s+4, s+4);
+      }
+      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      highlightCode(); return;
     }
-  }
 
-  // Enter → 自动缩进
-  if (e.key === 'Enter' && settings.autoIndent) {
-    const lines = ed.value.substring(0, s).split('\n');
-    const lastLine = lines[lines.length - 1];
-    const indent = lastLine.match(/^(\s*)/)[1];
-    const extraIndent = lastLine.trimEnd().endsWith(':') ? '    ' : '';
-    e.preventDefault();
-    insertText('\n' + indent + extraIndent);
-  }
-});
-updateLineNumbers();
+    // 括号 / 引号自动补全
+    const pairs = {'(':')', '[':']', '{':'}', '"':'"', "'":"'"};
+    if (pairs[e.key] && s === end) {
+      e.preventDefault();
+      ed.value = ed.value.substring(0,s) + e.key + pairs[e.key] + ed.value.substring(end);
+      ed.setSelectionRange(s+1, s+1);
+      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      highlightCode(); return;
+    }
+    // 右括号跳过
+    if ([")", "]", "}"].includes(e.key) && ed.value[s] === e.key) {
+      e.preventDefault(); ed.setSelectionRange(s+1, s+1); return;
+    }
+    // Backspace 删除成对
+    if (e.key === 'Backspace' && s === end && s > 0) {
+      const open = ed.value[s-1], close = ed.value[s];
+      if (pairs[open] === close) {
+        e.preventDefault();
+        ed.value = ed.value.substring(0,s-1) + ed.value.substring(s+1);
+        ed.setSelectionRange(s-1, s-1);
+        if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+        highlightCode(); return;
+      }
+    }
+    // Enter → 自动缩进
+    if (e.key === 'Enter' && settings.autoIndent) {
+      const lines = ed.value.substring(0,s).split('\n');
+      const last = lines[lines.length-1];
+      const indent = last.match(/^(\s*)/)[1];
+      const extra = last.trimEnd().endsWith(':') ? '    ' : '';
+      e.preventDefault();
+      ed.value = ed.value.substring(0,s) + '\n' + indent + extra + ed.value.substring(end);
+      const newPos = s + 1 + indent.length + extra.length;
+      ed.setSelectionRange(newPos, newPos);
+      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      highlightCode(); return;
+    }
+  });
+
+  // 首次渲染
+  highlightCode();
+}
 
 // ── Tabs ──
 let tabCounter = 1;
@@ -1545,10 +1656,10 @@ function addTab() {
 }
 
 function switchTab(idx) {
-  tabs[activeTab].code = document.getElementById('editor').value;
+  const _edT = document.getElementById('editor');
+  if(_edT) tabs[activeTab].code = _edT.value;
   activeTab = idx;
-  document.getElementById('editor').value = tabs[idx].code;
-  updateLineNumbers();
+  if(_edT){ _edT.value = tabs[idx].code || ''; highlightCode(); }
   renderTabs();
 }
 
@@ -1557,8 +1668,7 @@ function removeTab(e, idx) {
   if (tabs.length === 1) { showToast('至少保留一个标签页'); return; }
   tabs.splice(idx, 1);
   activeTab = Math.min(activeTab, tabs.length - 1);
-  document.getElementById('editor').value = tabs[activeTab].code;
-  updateLineNumbers();
+  const _edR = document.getElementById('editor'); if(_edR){ _edR.value = tabs[activeTab].code || ''; highlightCode(); }
   renderTabs();
 }
 
@@ -1599,17 +1709,18 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerup', () => { resizing = false; resizer.classList.remove('dragging'); });
 
 // ── Snippets ──
-const SNIPPETS = [
-  { icon: '📊', name: 'NumPy 数组', desc: '创建和操作数组', code: `import numpy as np\n\narr = np.array([1, 2, 3, 4, 5])\nprint("数组:", arr)\nprint("均值:", np.mean(arr))\nprint("标准差:", np.std(arr))\nprint("排序:", np.sort(arr[::-1]))\n` },
-  { icon: '🗂️', name: 'Pandas 数据表', desc: '创建 DataFrame 并分析', code: `import pandas as pd\n\ndata = {\n    '姓名': ['Alice', 'Bob', 'Charlie', 'Diana'],\n    '年龄': [25, 30, 35, 28],\n    '成绩': [92, 85, 78, 95]\n}\ndf = pd.DataFrame(data)\nprint(df)\nprint("\\n统计摘要:")\nprint(df.describe())\n` },
-  { icon: '📈', name: 'Matplotlib 折线图', desc: '绘制中文图表', code: `import matplotlib.pyplot as plt\nimport numpy as np\n\nx = np.linspace(0, 4 * np.pi, 200)\ny1 = np.sin(x)\ny2 = np.cos(x)\n\nfig, ax = plt.subplots(figsize=(8, 4))\nax.plot(x, y1, label='正弦 sin(x)', color='#C96B3A', linewidth=2)\nax.plot(x, y2, label='余弦 cos(x)', color='#1E5FA8', linewidth=2)\nax.set_title('正弦与余弦函数对比', fontsize=14)\nax.set_xlabel('角度（弧度）')\nax.set_ylabel('函数值')\nax.legend()\nax.grid(alpha=0.3)\nplt.tight_layout()\nplt.show()\n` },
-  { icon: '🔢', name: '矩阵运算', desc: 'NumPy 线性代数', code: `import numpy as np\n\nA = np.array([[2, 1], [5, 3]])\nb = np.array([4, 7])\nx = np.linalg.solve(A, b)\nprint("线性方程组 Ax = b 的解:")\nprint("x =", x)\n\nvals, vecs = np.linalg.eig(A)\nprint("\\n特征值:", vals)\n` },
-  { icon: '📝', name: '文件读写', desc: '读取和写入文本文件', code: `# 写入文件\nwith open('data.txt', 'w', encoding='utf-8') as f:\n    for i in range(5):\n        f.write(f'第 {i+1} 行数据\\n')\n\n# 读取文件\nwith open('data.txt', 'r', encoding='utf-8') as f:\n    content = f.read()\nprint(content)\n` },
-  { icon: '🧮', name: '排序算法', desc: '快速排序实现', code: `def quicksort(arr):\n    if len(arr) <= 1:\n        return arr\n    pivot = arr[len(arr) // 2]\n    left = [x for x in arr if x < pivot]\n    mid = [x for x in arr if x == pivot]\n    right = [x for x in arr if x > pivot]\n    return quicksort(left) + mid + quicksort(right)\n\nimport random\ndata = [random.randint(1, 100) for _ in range(15)]\nprint("原始:", data)\nprint("排序:", quicksort(data))\n` },
-  { icon: '🌐', name: 'JSON 处理', desc: '解析和生成 JSON', code: `import json\n\ndata = {\n    "name": "PyRunner",\n    "version": "1.0",\n    "features": ["运行代码", "可视化", "多文件"],\n    "author": {"name": "Claude", "year": 2024}\n}\n\njson_str = json.dumps(data, ensure_ascii=False, indent=2)\nprint("JSON 输出:")\nprint(json_str)\n\nparsed = json.loads(json_str)\nprint("\\n解析后:", parsed['features'])\n` },
-  { icon: '🎨', name: 'PIL 图像处理', desc: '生成分形图（Julia Set）', code: `import numpy as np\nfrom PIL import Image\n\nw, h = 600, 450\nc = complex(-0.7, 0.27015)\ny, x = np.ogrid[-1.2:1.2:h*1j, -1.6:1.6:w*1j]\nz = x + 1j * y\nout = np.zeros((h, w), dtype=np.uint8)\nfor i in range(200):\n    z = z**2 + c\n    out[np.abs(z) < 1000] = i\nImage.fromarray(out)\n` },
-  { icon: '📉', name: 'Plotly 交互图表', desc: '可缩放的折线图', code: `import plotly.graph_objects as go\nimport numpy as np\n\nx = np.linspace(0, 4*np.pi, 300)\nfig = go.Figure()\nfig.add_trace(go.Scatter(x=x, y=np.sin(x), mode='lines', name='sin(x)', line=dict(color='#C96B3A', width=2)))\nfig.add_trace(go.Scatter(x=x, y=np.cos(x), mode='lines', name='cos(x)', line=dict(color='#1E5FA8', width=2)))\nfig.update_layout(title='正弦与余弦（可交互）', xaxis_title='x', yaxis_title='y', plot_bgcolor='#F8F9F9')\nfig\n` },
-  { icon: '⏱️', name: '性能测量', desc: '测量代码运行时间', code: `import time\nimport random\n\ndef bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        for j in range(0, n-i-1):\n            if arr[j] > arr[j+1]:\n                arr[j], arr[j+1] = arr[j+1], arr[j]\n\ndata = [random.randint(1, 1000) for _ in range(500)]\nstart = time.perf_counter()\nbubble_sort(data.copy())\nelapsed = time.perf_counter() - start\nprint(f"冒泡排序 500 个元素: {elapsed*1000:.2f} ms")\n` },
+const SNIPPETS =[
+  { icon: '🦋', name: '蝴蝶曲线', desc: 'Matplotlib 参数方程绘图', code: `import numpy as np\nimport matplotlib.pyplot as plt\n\nt = np.linspace(0, 12 * np.pi, 2000)\nx = np.sin(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\ny = np.cos(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\n\nplt.figure(figsize=(6, 6))\nplt.plot(x, y, color='#9C6A10', linewidth=1)\nplt.title('数学之美：蝴蝶曲线')\nplt.axis('off')\nplt.show()\n` },
+  { icon: '🌐', name: '网络请求', desc: '获取并解析公共 API', code: `import asyncio\nfrom pyodide.http import pyfetch\nimport json\n\nasync def fetch_cat_fact():\n    print("正在获取猫咪冷知识...")\n    response = await pyfetch("https://catfact.ninja/fact")\n    if response.ok:\n        data = await response.json()\n        print(f"\\n🐱 你知道吗？\\n{data['fact']}")\n    else:\n        print("请求失败")\n\nasyncio.ensure_future(fetch_cat_fact())\n` },
+  { icon: '🧩', name: 'K-Means 聚类', desc: 'Scikit-Learn 机器学习示例', code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.cluster import KMeans\nfrom sklearn.datasets import make_blobs\n\n# 生成模拟数据\nX, y = make_blobs(n_samples=300, centers=4, cluster_std=0.6, random_state=0)\n\n# 训练 K-Means 模型\nkmeans = KMeans(n_clusters=4, n_init='auto')\nkmeans.fit(X)\n\n# 可视化结果\nplt.figure(figsize=(7, 5))\nplt.scatter(X[:, 0], X[:, 1], c=kmeans.labels_, cmap='viridis', s=30, alpha=0.6)\ncenters = kmeans.cluster_centers_\nplt.scatter(centers[:, 0], centers[:, 1], c='red', s=100, marker='x', label='聚类中心')\nplt.title('K-Means 聚类结果')\nplt.legend()\nplt.show()\n` },
+  { icon: '🌀', name: '洛伦兹吸引子', desc: 'SciPy 微分方程与 3D 绘图', code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.integrate import solve_ivp\n\ndef lorenz(t, state, sigma, beta, rho):\n    x, y, z = state\n    return[sigma * (y - x), x * (rho - z) - y, x * y - beta * z]\n\n# 初始条件与参数\ninitial_state =[1.0, 1.0, 1.0]\nt_span = (0, 40)\nt_eval = np.linspace(*t_span, 4000)\n\n# 求解方程\nsol = solve_ivp(lorenz, t_span, initial_state, args=(10.0, 8.0/3.0, 28.0), t_eval=t_eval)\n\n# 3D 绘图\nfig = plt.figure(figsize=(8, 6))\nax = fig.add_subplot(projection='3d')\nax.plot(sol.y[0], sol.y[1], sol.y[2], color='#1A5CA8', linewidth=0.5)\nax.set_title("洛伦兹奇异吸引子 (Lorenz Attractor)")\nplt.show()\n` },
+  { icon: '🎲', name: '猜数字游戏', desc: '控制台交互 input() 演示', code: `import random\n\nprint("🎮 欢迎来到猜数字游戏！(1-100)")\ntarget = random.randint(1, 100)\nattempts = 0\nmsg = "请输入你的猜测："\n\nwhile True:\n    try:\n        guess_str = await input(msg)\n        guess = int(guess_str)\n        attempts += 1\n        diff = guess - target\n        \n        if diff > 10:\n            msg = f"你猜了 {guess}，太多了！再试一次："\n            print(msg)\n        elif 0 < diff <= 10:\n            msg = f"你猜了 {guess}，多了点（快接近了）！再试一次："\n            print(msg)\n        elif diff < -10:\n            msg = f"你猜了 {guess}，太少了！再试一次："\n            print(msg)\n        elif -10 <= diff < 0:\n            msg = f"你猜了 {guess}，少了点（快接近了）！再试一次："\n            print(msg)\n        else:\n            print(f"\\n🎉 恭喜你！只用了 {attempts} 次就猜中了数字 {target}！")\n            break\n    except ValueError:\n        msg = "⚠️ 格式错误，请输入有效的整数："\n        print(msg)\n` },
+  { icon: '🤖', name: 'AI 六大算法竞速', desc: '可亲自出题的高并发搜索对抗', code: `import asyncio\nimport random\nimport math\n\n# AI 选手的通用核心算法函数\nasync def ai_racer(name, icon, strategy, target, max_val):\n    low, high = 1, max_val\n    attempts = 0\n    \n    while low <= high:\n        attempts += 1\n        length = high - low\n        \n        # ── 6 种不同的真实搜索策略 ──\n        if strategy == 'binary':\n            guess = low + length // 2\n        elif strategy == 'random':\n            guess = random.randint(low, high)\n        elif strategy == 'golden':\n            guess = low + int(0.618 * length)\n            if guess == high and length > 0: guess -= 1\n        elif strategy == 'ternary':\n            # 三分法：每次尝试取 1/3 的位置\n            guess = low + length // 3\n        elif strategy == 'geometric':\n            # 几何平均数查找：适用于大跨度的对数级分布\n            guess = int(math.sqrt(low * high))\n        elif strategy == 'stoch_binary':\n            # 随机化二分：在中间 50% 区域内随机取值，防止被针对\n            if length < 4:\n                guess = low + length // 2\n            else:\n                guess = random.randint(low + length//4, high - length//4)\n                \n        # 防止越界的兜底保护\n        guess = max(low, min(high, guess))\n            \n        print(f"{icon} {name} 步数{attempts:02d} | 猜: {guess:<6} (区间: {low}~{high})")\n        \n        # 竞速停顿 (大幅加快，0.15 秒停顿以体现出高速刷屏的极客感)\n        await asyncio.sleep(0.15)\n        \n        if guess == target:\n            print(f"\\n🏆 {icon} 【{name}】 率先命中🎯！总耗时: {attempts} 步")\n            return (name, attempts, icon)\n        elif guess < target:\n            low = guess + 1\n        else:\n            high = guess - 1\n            \n    return (name, attempts, icon)\n\nasync def run_race():\n    print("🏁 「AI 算法大比拼」6 大门派同台竞速")\n    \n    # 1. 设定最大范围\n    try:\n        max_input = await input("1. 请设定数字的最大范围 (回车默认 10000): ")\n        max_val = int(max_input) if max_input.strip() else 10000\n        if max_val < 10: max_val = 10000\n    except:\n        max_val = 10000\n        print("⚠️ 输入无效，范围默认设定为 10000")\n        \n    # 2. 设定目标数字或系统随机\n    try:\n        target_input = await input(f"2. 请指定目标数字(1-{max_val})，直接回车则由系统随机生成: ")\n        if target_input.strip():\n            target = int(target_input)\n            target = max(1, min(max_val, target)) # 限制在合法范围内\n            print(f"\\n🎯 目标已被玩家亲自设定为: {target}")\n        else:\n            target = random.randint(1, max_val)\n            print(f"\\n🎯 系统已在 1 到 {max_val} 之间随机生成了神秘数字。")\n    except:\n        target = random.randint(1, max_val)\n        print(f"\\n🎯 输入无效，系统已随机生成神秘数字。")\n        \n    print("🚦 比赛开始！6位选手同时起跑：\\n")\n    \n    # 创建并发任务：6个使用完全不同数学策略的 AI\n    tasks =[\n        ai_racer("Alpha_二分法", "🔵", "binary", target, max_val),\n        ai_racer("Beta_全随机", "🟠", "random", target, max_val),\n        ai_racer("Gamma_黄金率", "🟣", "golden", target, max_val),\n        ai_racer("Delta_三分法", "🟢", "ternary", target, max_val),\n        ai_racer("Epsilon_几何平均", "🟡", "geometric", target, max_val),\n        ai_racer("Zeta_随机二分", "🔴", "stoch_binary", target, max_val)\n    ]\n    \n    # asyncio.gather 让他们同时并发运行！\n    results = await asyncio.gather(*tasks)\n    \n    print("\\n📊 【最终排名统计】")\n    results.sort(key=lambda x: x[1])  # 按耗时步数排序\n    for i, (name, steps, icon) in enumerate(results):\n        medal =["🥇", "🥈", "🥉", "🏅", "🏅", "🏅"][i]\n        print(f" {medal} 第{i+1}名: {icon} {name:<12} (共用时 {steps:02d} 步)")\n\n# 启动主程序\nasyncio.ensure_future(run_race())\n` },
+  { icon: '📊', name: 'Pandas 数据透视', desc: '现代数据处理与统计', code: `import pandas as pd\nimport numpy as np\n\n# 生成随机销售数据\nnp.random.seed(42)\ndates = pd.date_range('2023-01-01', periods=100)\ndata = {\n    '日期': dates,\n    '产品': np.random.choice(['手机', '电脑', '平板', '耳机'], 100),\n    '销量': np.random.randint(10, 100, 100),\n    '退货率': np.random.uniform(0.01, 0.1, 100)\n}\ndf = pd.DataFrame(data)\n\n# 数据透视表分析\npivot = df.pivot_table(index='产品', values=['销量', '退货率'], \n                       aggfunc={'销量': 'sum', '退货率': 'mean'})\npivot['退货率'] = pivot['退货率'].apply(lambda x: f"{x:.2%}")\npivot = pivot.sort_values(by='销量', ascending=False)\n\nprint("📈 2023年第一季度各产品销售表现：")\nprint("-" * 40)\nprint(pivot)\n` },
+  { icon: '🌌', name: 'Plotly 3D 曲面', desc: '可交互的 3D 图表', code: `import plotly.graph_objects as go\nimport numpy as np\n\nx = np.linspace(-5, 5, 50)\ny = np.linspace(-5, 5, 50)\nx, y = np.meshgrid(x, y)\n# 构造峰值函数\nz = np.sin(np.sqrt(x**2 + y**2))\n\nfig = go.Figure(data=[go.Surface(z=z, x=x, y=y, colorscale='Viridis')])\nfig.update_layout(title='3D 波动曲面 (拖拽可旋转)', autosize=False,\n                  width=600, height=500, margin=dict(l=65, r=50, b=65, t=90))\nfig\n` },
+  { icon: '✨', name: '模式匹配', desc: 'Python 3.10+ 新特性 Match-Case', code: `def handle_command(command):\n    match command.split():\n        case["go", direction] if direction in["北", "南", "东", "西"]:\n            return f"🚶 你正向 {direction} 前进。"\n        case["take", item]:\n            return f"🖐️ 你捡起了 {item}。"\n        case["drop", *items]:\n            return f"🗑️ 你丢弃了: {', '.join(items)}"\n        case["quit" | "exit"]:\n            return "👋 游戏结束！"\n        case _:\n            return "❓ 未知指令，请重试。"\n\nprint(handle_command("go 北"))\nprint(handle_command("take 魔法剑"))\nprint(handle_command("drop 苹果 药水 破鞋"))\nprint(handle_command("dance"))\n` },
+  { icon: '🖼️', name: '图像分形生成', desc: 'PIL 创建曼德勃罗特集合', code: `import numpy as np\nfrom PIL import Image\n\n# 设置图像分辨率和区域\nw, h = 800, 600\nx_min, x_max = -2.0, 0.5\ny_min, y_max = -1.25, 1.25\n\n# 生成复数平面\ny, x = np.ogrid[y_min:y_max:h*1j, x_min:x_max:w*1j]\nc = x + 1j * y\nz = c.copy()\n\n# 记录逃逸时间\nmax_iter = 60\nfractal = np.zeros(z.shape, dtype=int)\n\nfor i in range(max_iter):\n    mask = np.abs(z) < 2\n    z[mask] = z[mask]**2 + c[mask]\n    fractal[mask] = i\n\n# 转换为色彩图像\nfractal = np.uint8(255 * fractal / max_iter)\nrgb = np.zeros((h, w, 3), dtype=np.uint8)\nrgb[..., 0] = fractal * 2\nrgb[..., 1] = fractal\nrgb[..., 2] = 255 - fractal\n\nprint("正在渲染曼德勃罗特 (Mandelbrot) 分形图...")\nImage.fromarray(rgb)\n` },
+  { icon: '🏗️', name: '数据类与类型', desc: 'Dataclass & Typing', code: `from dataclasses import dataclass\nfrom typing import List\nimport json\n\n@dataclass\nclass Character:\n    name: str\n    level: int\n    inventory: List[str]\n    \n    def to_json(self):\n        return json.dumps(self.__dict__, ensure_ascii=False, indent=2)\n\nhero = Character(name="亚瑟", level=10, inventory=["铁剑", "小药瓶", "盾牌"])\n\nprint("⚔️ 英雄信息：")\nprint(f"姓名: {hero.name} | 等级: Lv.{hero.level}")\nprint(f"背包: {', '.join(hero.inventory)}")\nprint("\\n序列化为 JSON:")\nprint(hero.to_json())\n` }
 ];
 
 function renderSnippets() {
@@ -1621,8 +1732,7 @@ function renderSnippets() {
     div.innerHTML = `<div class="snippet-icon">${s.icon}</div><div class="snippet-text"><div class="snippet-name">${s.name}</div><div class="snippet-desc">${s.desc}</div></div><span class="snippet-arrow">›</span>`;
     div.onclick = () => {
       tabs[activeTab].code = s.code;
-      document.getElementById('editor').value = s.code;
-      updateLineNumbers();
+      const _edS = document.getElementById('editor'); if(_edS){ _edS.value = s.code; highlightCode(); }
       closeSnippets();
       showToast('已加载: ' + s.name);
     };
@@ -1650,9 +1760,12 @@ document.getElementById('settings-btn').onclick = () => {
 
 // ── Settings ──
 function applyFontSize(v) {
-  document.getElementById('editor').style.fontSize = v + 'px';
-  document.getElementById('line-numbers').style.fontSize = v + 'px';
-  settings.fontSize = parseInt(v); saveSettings();
+  const sz = parseInt(v);
+  const ed = document.getElementById('editor');
+  const pre = document.getElementById('highlight-pre');
+  const ln = document.getElementById('line-numbers');
+  const hc = document.getElementById('highlight-code');[ed, pre, ln, hc].forEach(el => { if(el) el.style.fontSize = sz + 'px'; });
+  settings.fontSize = sz; saveSettings();
 }
 function toggleSetting(key) {
   const map = { 'auto-indent': 'autoIndent', 'clear-before-run': 'clearBeforeRun', 'show-lines': 'showLines' };
@@ -1661,8 +1774,8 @@ function toggleSetting(key) {
   saveSettings();
   document.getElementById(key + '-toggle').classList.toggle('on', settings[k]);
   if (key === 'show-lines') {
-    document.getElementById('line-numbers').style.display = settings.showLines ? '' : 'none';
-    document.getElementById('editor').style.paddingLeft = settings.showLines ? '50px' : '14px';
+    const _ln = document.getElementById('line-numbers');
+    if (_ln) _ln.style.display = settings.showLines ? '' : 'none';
   }
 }
 
@@ -1712,8 +1825,7 @@ async function copyOutput() {
 }
 
 function clearEditor() {
-  const ed = document.getElementById('editor');
-  if (!ed.value.trim()) return;
+  const _edCl = document.getElementById('editor'); if (!_edCl || !_edCl.value.trim()) return;
   // 二次确认防误触
   const btn = document.getElementById('clear-editor-btn');
   if (btn._confirmPending) {
@@ -1723,8 +1835,7 @@ function clearEditor() {
     btn.style.color = '';
     btn.title = '清空编辑器';
     tabs[activeTab].code = '';
-    ed.value = '';
-    updateLineNumbers();
+    const _edC = document.getElementById('editor'); if(_edC){ _edC.value = ''; highlightCode(); }
     clearErrorHighlight();
     saveState();
     showToast('已清空');
@@ -1743,7 +1854,7 @@ function clearEditor() {
 }
 
 async function copyCode() {
-  const text = document.getElementById('editor').value;
+  const text = (document.getElementById('editor') || {}).value || '';
   if (!text.trim()) { showToast('代码为空'); return; }
   const ok = await smartCopy(text);
   if (ok) { flashCopyBtn('copy-code-btn'); showToast('已复制代码 \u2713'); }
@@ -1752,11 +1863,11 @@ async function copyCode() {
 
 // ── 应用已保存的设置 ──
 (function() {
-  applyFontSize(settings.fontSize);
-  document.getElementById('font-size-select').value = settings.fontSize;
+  applyFontSize(settings.fontSize || 13);
+  document.getElementById('font-size-select').value = settings.fontSize || 13;
   if (!settings.showLines) {
-    document.getElementById('line-numbers').style.display = 'none';
-    document.getElementById('editor').style.paddingLeft = '14px';
+    const _ln2 = document.getElementById('line-numbers');
+    if(_ln2) _ln2.style.display = 'none';
     document.getElementById('show-lines-toggle').classList.remove('on');
   }
   if (!settings.autoIndent) document.getElementById('auto-indent-toggle').classList.remove('on');
