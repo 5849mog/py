@@ -614,7 +614,7 @@
   <div class="loader-logo">Py<span>Runner</span></div>
   <div class="loader-subtitle">Python 3.11 运行平台</div>
   <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
-  <div class="loader-text" id="loader-text">正在初始化...</div>
+  <div class="loader-text" id="loader-text">正在准备中...</div>
 </div>
 
 <!-- Main App -->
@@ -659,7 +659,7 @@
         <div id="line-numbers"></div>
         <div id="highlight-wrap">
           <pre id="highlight-pre" aria-hidden="true"><code id="highlight-code" class="language-python"></code></pre>
-          <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" autocomplete="off"></textarea>
+          <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
         </div>
       </div>
 
@@ -820,7 +820,7 @@ function loadState() {
   return null;
 }
 const _savedState = loadState();
-let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: _INITIAL_CODE }];
+let tabs = _savedState ? _savedState.tabs :[{ name: 'main.py', code: _INITIAL_CODE }];
 if (_savedState) {
   activeTab = Math.min(_savedState.active, tabs.length - 1);
 }
@@ -833,28 +833,48 @@ async function initPyodide() {
   const _initCode = (tabs && tabs[activeTab]) ? tabs[activeTab].code : (_INITIAL_CODE || '');
   initEditor(_initCode);
   try {
-    const setLoadMsg = (m, pct) => { const el = document.getElementById('loader-text'); if(el) el.textContent = m; if(pct!==undefined){const f=document.getElementById('loader-fill');if(f)f.style.width=pct+'%';} };
-    setLoadMsg('正在初始化 Python 运行时...');
+    const setLoadMsg = (m, pct) => { 
+      const el = document.getElementById('loader-text'); 
+      if(el) el.textContent = m; 
+      if(pct !== undefined) {
+        const f = document.getElementById('loader-fill');
+        if(f) f.style.width = pct + '%';
+      } 
+    };
+
+    // 虚拟平滑进度补偿：解决 loadPyodide 漫长下载时进度条死机的视觉痛点
+    setLoadMsg('正在建立与 Python 的连接...', 5);
+    let fakePct = 5;
+    const fakeInterval = setInterval(() => {
+      if (fakePct < 35) {
+        fakePct += 1.5;
+        setLoadMsg('正在下载核心编译环境...', fakePct);
+      }
+    }, 250);
+
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
+    clearInterval(fakeInterval);
+
+    // 核心包分阶段真实进度注入
     const pkgGroups =[
-      { label: '加载数值计算库 (numpy, scipy)...', pkgs:['numpy', 'scipy', 'micropip'] },
-      { label: '加载数据分析库 (pandas, statsmodels)...', pkgs: ['pandas', 'statsmodels'] },
-      { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'] },
-      { label: '加载机器学习库 (sklearn, sympy)...', pkgs: ['scikit-learn', 'sympy'] },
-      { label: '加载网络库 (networkx, pyodide-http)...', pkgs: ['networkx', 'pyodide-http'] },
+      { label: '加载数值计算库 (numpy, scipy)...', pkgs:['numpy', 'scipy', 'micropip'], pct: 45 },
+      { label: '加载数据分析库 (pandas, statsmodels)...', pkgs:['pandas', 'statsmodels'], pct: 55 },
+      { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'], pct: 65 },
+      { label: '加载机器学习库 (sklearn, sympy)...', pkgs: ['scikit-learn', 'sympy'], pct: 75 },
+      { label: '加载网络架构库 (networkx)...', pkgs: ['networkx', 'pyodide-http'], pct: 80 },
     ];
     for (const g of pkgGroups) {
-      setLoadMsg(g.label);
+      setLoadMsg(g.label, g.pct);
       await pyodide.loadPackage(g.pkgs);
     }
 
-    setLoadMsg('安装可视化库 (seaborn, plotly)...', 78);
+    setLoadMsg('安装高级扩展图表库 (seaborn, plotly)...', 85);
     try {
       await pyodide.runPythonAsync("import micropip; await micropip.install(['seaborn', 'plotly'])");
     } catch(_) {}
 
     // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
-    setLoadMsg('正在加载中文字体...', 88);
+    setLoadMsg('正在加载中文字体，让图表更清晰...', 92);
     try {
       // NotoSansCJK Regular OTF，托管于 jsDelivr，约 10 MB
       const fontUrl = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf';
@@ -879,7 +899,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       showToast('Python 3.11 已就绪（中文字体加载失败）');
     }
 
-    setLoadMsg('就绪！', 100);
+    setLoadMsg('一切就绪，开始探索数学与代码的美妙吧！', 100);
     setStatus('ready', '就绪');
     document.getElementById('run-btn').classList.remove('loading');
     setTimeout(() => {
@@ -1447,7 +1467,7 @@ function setStatus(kind, text) {
 }
 
 // ── 初始代码 ──
-const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击「代码片段」探索更多示例。")\n';
+const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
 
 // ── 语法高亮（Prism.js）──
 let _highlightRaf = null;
@@ -1710,17 +1730,66 @@ window.addEventListener('pointerup', () => { resizing = false; resizer.classList
 
 // ── Snippets ──
 const SNIPPETS =[
-  { icon: '🦋', name: '蝴蝶曲线', desc: 'Matplotlib 参数方程绘图', code: `import numpy as np\nimport matplotlib.pyplot as plt\n\nt = np.linspace(0, 12 * np.pi, 2000)\nx = np.sin(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\ny = np.cos(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\n\nplt.figure(figsize=(6, 6))\nplt.plot(x, y, color='#9C6A10', linewidth=1)\nplt.title('数学之美：蝴蝶曲线')\nplt.axis('off')\nplt.show()\n` },
-  { icon: '🌐', name: '网络请求', desc: '获取并解析公共 API', code: `import asyncio\nfrom pyodide.http import pyfetch\nimport json\n\nasync def fetch_cat_fact():\n    print("正在获取猫咪冷知识...")\n    response = await pyfetch("https://catfact.ninja/fact")\n    if response.ok:\n        data = await response.json()\n        print(f"\\n🐱 你知道吗？\\n{data['fact']}")\n    else:\n        print("请求失败")\n\nasyncio.ensure_future(fetch_cat_fact())\n` },
-  { icon: '🧩', name: 'K-Means 聚类', desc: 'Scikit-Learn 机器学习示例', code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.cluster import KMeans\nfrom sklearn.datasets import make_blobs\n\n# 生成模拟数据\nX, y = make_blobs(n_samples=300, centers=4, cluster_std=0.6, random_state=0)\n\n# 训练 K-Means 模型\nkmeans = KMeans(n_clusters=4, n_init='auto')\nkmeans.fit(X)\n\n# 可视化结果\nplt.figure(figsize=(7, 5))\nplt.scatter(X[:, 0], X[:, 1], c=kmeans.labels_, cmap='viridis', s=30, alpha=0.6)\ncenters = kmeans.cluster_centers_\nplt.scatter(centers[:, 0], centers[:, 1], c='red', s=100, marker='x', label='聚类中心')\nplt.title('K-Means 聚类结果')\nplt.legend()\nplt.show()\n` },
-  { icon: '🌀', name: '洛伦兹吸引子', desc: 'SciPy 微分方程与 3D 绘图', code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.integrate import solve_ivp\n\ndef lorenz(t, state, sigma, beta, rho):\n    x, y, z = state\n    return[sigma * (y - x), x * (rho - z) - y, x * y - beta * z]\n\n# 初始条件与参数\ninitial_state =[1.0, 1.0, 1.0]\nt_span = (0, 40)\nt_eval = np.linspace(*t_span, 4000)\n\n# 求解方程\nsol = solve_ivp(lorenz, t_span, initial_state, args=(10.0, 8.0/3.0, 28.0), t_eval=t_eval)\n\n# 3D 绘图\nfig = plt.figure(figsize=(8, 6))\nax = fig.add_subplot(projection='3d')\nax.plot(sol.y[0], sol.y[1], sol.y[2], color='#1A5CA8', linewidth=0.5)\nax.set_title("洛伦兹奇异吸引子 (Lorenz Attractor)")\nplt.show()\n` },
-  { icon: '🎲', name: '猜数字游戏', desc: '控制台交互 input() 演示', code: `import random\n\nprint("🎮 欢迎来到猜数字游戏！(1-100)")\ntarget = random.randint(1, 100)\nattempts = 0\nmsg = "请输入你的猜测："\n\nwhile True:\n    try:\n        guess_str = await input(msg)\n        guess = int(guess_str)\n        attempts += 1\n        diff = guess - target\n        \n        if diff > 10:\n            msg = f"你猜了 {guess}，太多了！再试一次："\n            print(msg)\n        elif 0 < diff <= 10:\n            msg = f"你猜了 {guess}，多了点（快接近了）！再试一次："\n            print(msg)\n        elif diff < -10:\n            msg = f"你猜了 {guess}，太少了！再试一次："\n            print(msg)\n        elif -10 <= diff < 0:\n            msg = f"你猜了 {guess}，少了点（快接近了）！再试一次："\n            print(msg)\n        else:\n            print(f"\\n🎉 恭喜你！只用了 {attempts} 次就猜中了数字 {target}！")\n            break\n    except ValueError:\n        msg = "⚠️ 格式错误，请输入有效的整数："\n        print(msg)\n` },
-  { icon: '🤖', name: 'AI 六大算法竞速', desc: '可亲自出题的高并发搜索对抗', code: `import asyncio\nimport random\nimport math\n\n# AI 选手的通用核心算法函数\nasync def ai_racer(name, icon, strategy, target, max_val):\n    low, high = 1, max_val\n    attempts = 0\n    \n    while low <= high:\n        attempts += 1\n        length = high - low\n        \n        # ── 6 种不同的真实搜索策略 ──\n        if strategy == 'binary':\n            guess = low + length // 2\n        elif strategy == 'random':\n            guess = random.randint(low, high)\n        elif strategy == 'golden':\n            guess = low + int(0.618 * length)\n            if guess == high and length > 0: guess -= 1\n        elif strategy == 'ternary':\n            # 三分法：每次尝试取 1/3 的位置\n            guess = low + length // 3\n        elif strategy == 'geometric':\n            # 几何平均数查找：适用于大跨度的对数级分布\n            guess = int(math.sqrt(low * high))\n        elif strategy == 'stoch_binary':\n            # 随机化二分：在中间 50% 区域内随机取值，防止被针对\n            if length < 4:\n                guess = low + length // 2\n            else:\n                guess = random.randint(low + length//4, high - length//4)\n                \n        # 防止越界的兜底保护\n        guess = max(low, min(high, guess))\n            \n        print(f"{icon} {name} 步数{attempts:02d} | 猜: {guess:<6} (区间: {low}~{high})")\n        \n        # 竞速停顿 (大幅加快，0.15 秒停顿以体现出高速刷屏的极客感)\n        await asyncio.sleep(0.15)\n        \n        if guess == target:\n            print(f"\\n🏆 {icon} 【{name}】 率先命中🎯！总耗时: {attempts} 步")\n            return (name, attempts, icon)\n        elif guess < target:\n            low = guess + 1\n        else:\n            high = guess - 1\n            \n    return (name, attempts, icon)\n\nasync def run_race():\n    print("🏁 「AI 算法大比拼」6 大门派同台竞速")\n    \n    # 1. 设定最大范围\n    try:\n        max_input = await input("1. 请设定数字的最大范围 (回车默认 10000): ")\n        max_val = int(max_input) if max_input.strip() else 10000\n        if max_val < 10: max_val = 10000\n    except:\n        max_val = 10000\n        print("⚠️ 输入无效，范围默认设定为 10000")\n        \n    # 2. 设定目标数字或系统随机\n    try:\n        target_input = await input(f"2. 请指定目标数字(1-{max_val})，直接回车则由系统随机生成: ")\n        if target_input.strip():\n            target = int(target_input)\n            target = max(1, min(max_val, target)) # 限制在合法范围内\n            print(f"\\n🎯 目标已被玩家亲自设定为: {target}")\n        else:\n            target = random.randint(1, max_val)\n            print(f"\\n🎯 系统已在 1 到 {max_val} 之间随机生成了神秘数字。")\n    except:\n        target = random.randint(1, max_val)\n        print(f"\\n🎯 输入无效，系统已随机生成神秘数字。")\n        \n    print("🚦 比赛开始！6位选手同时起跑：\\n")\n    \n    # 创建并发任务：6个使用完全不同数学策略的 AI\n    tasks =[\n        ai_racer("Alpha_二分法", "🔵", "binary", target, max_val),\n        ai_racer("Beta_全随机", "🟠", "random", target, max_val),\n        ai_racer("Gamma_黄金率", "🟣", "golden", target, max_val),\n        ai_racer("Delta_三分法", "🟢", "ternary", target, max_val),\n        ai_racer("Epsilon_几何平均", "🟡", "geometric", target, max_val),\n        ai_racer("Zeta_随机二分", "🔴", "stoch_binary", target, max_val)\n    ]\n    \n    # asyncio.gather 让他们同时并发运行！\n    results = await asyncio.gather(*tasks)\n    \n    print("\\n📊 【最终排名统计】")\n    results.sort(key=lambda x: x[1])  # 按耗时步数排序\n    for i, (name, steps, icon) in enumerate(results):\n        medal =["🥇", "🥈", "🥉", "🏅", "🏅", "🏅"][i]\n        print(f" {medal} 第{i+1}名: {icon} {name:<12} (共用时 {steps:02d} 步)")\n\n# 启动主程序\nasyncio.ensure_future(run_race())\n` },
-  { icon: '📊', name: 'Pandas 数据透视', desc: '现代数据处理与统计', code: `import pandas as pd\nimport numpy as np\n\n# 生成随机销售数据\nnp.random.seed(42)\ndates = pd.date_range('2023-01-01', periods=100)\ndata = {\n    '日期': dates,\n    '产品': np.random.choice(['手机', '电脑', '平板', '耳机'], 100),\n    '销量': np.random.randint(10, 100, 100),\n    '退货率': np.random.uniform(0.01, 0.1, 100)\n}\ndf = pd.DataFrame(data)\n\n# 数据透视表分析\npivot = df.pivot_table(index='产品', values=['销量', '退货率'], \n                       aggfunc={'销量': 'sum', '退货率': 'mean'})\npivot['退货率'] = pivot['退货率'].apply(lambda x: f"{x:.2%}")\npivot = pivot.sort_values(by='销量', ascending=False)\n\nprint("📈 2023年第一季度各产品销售表现：")\nprint("-" * 40)\nprint(pivot)\n` },
-  { icon: '🌌', name: 'Plotly 3D 曲面', desc: '可交互的 3D 图表', code: `import plotly.graph_objects as go\nimport numpy as np\n\nx = np.linspace(-5, 5, 50)\ny = np.linspace(-5, 5, 50)\nx, y = np.meshgrid(x, y)\n# 构造峰值函数\nz = np.sin(np.sqrt(x**2 + y**2))\n\nfig = go.Figure(data=[go.Surface(z=z, x=x, y=y, colorscale='Viridis')])\nfig.update_layout(title='3D 波动曲面 (拖拽可旋转)', autosize=False,\n                  width=600, height=500, margin=dict(l=65, r=50, b=65, t=90))\nfig\n` },
-  { icon: '✨', name: '模式匹配', desc: 'Python 3.10+ 新特性 Match-Case', code: `def handle_command(command):\n    match command.split():\n        case["go", direction] if direction in["北", "南", "东", "西"]:\n            return f"🚶 你正向 {direction} 前进。"\n        case["take", item]:\n            return f"🖐️ 你捡起了 {item}。"\n        case["drop", *items]:\n            return f"🗑️ 你丢弃了: {', '.join(items)}"\n        case["quit" | "exit"]:\n            return "👋 游戏结束！"\n        case _:\n            return "❓ 未知指令，请重试。"\n\nprint(handle_command("go 北"))\nprint(handle_command("take 魔法剑"))\nprint(handle_command("drop 苹果 药水 破鞋"))\nprint(handle_command("dance"))\n` },
-  { icon: '🖼️', name: '图像分形生成', desc: 'PIL 创建曼德勃罗特集合', code: `import numpy as np\nfrom PIL import Image\n\n# 设置图像分辨率和区域\nw, h = 800, 600\nx_min, x_max = -2.0, 0.5\ny_min, y_max = -1.25, 1.25\n\n# 生成复数平面\ny, x = np.ogrid[y_min:y_max:h*1j, x_min:x_max:w*1j]\nc = x + 1j * y\nz = c.copy()\n\n# 记录逃逸时间\nmax_iter = 60\nfractal = np.zeros(z.shape, dtype=int)\n\nfor i in range(max_iter):\n    mask = np.abs(z) < 2\n    z[mask] = z[mask]**2 + c[mask]\n    fractal[mask] = i\n\n# 转换为色彩图像\nfractal = np.uint8(255 * fractal / max_iter)\nrgb = np.zeros((h, w, 3), dtype=np.uint8)\nrgb[..., 0] = fractal * 2\nrgb[..., 1] = fractal\nrgb[..., 2] = 255 - fractal\n\nprint("正在渲染曼德勃罗特 (Mandelbrot) 分形图...")\nImage.fromarray(rgb)\n` },
-  { icon: '🏗️', name: '数据类与类型', desc: 'Dataclass & Typing', code: `from dataclasses import dataclass\nfrom typing import List\nimport json\n\n@dataclass\nclass Character:\n    name: str\n    level: int\n    inventory: List[str]\n    \n    def to_json(self):\n        return json.dumps(self.__dict__, ensure_ascii=False, indent=2)\n\nhero = Character(name="亚瑟", level=10, inventory=["铁剑", "小药瓶", "盾牌"])\n\nprint("⚔️ 英雄信息：")\nprint(f"姓名: {hero.name} | 等级: Lv.{hero.level}")\nprint(f"背包: {', '.join(hero.inventory)}")\nprint("\\n序列化为 JSON:")\nprint(hero.to_json())\n` }
+  {
+    icon: '🤖',
+    name: 'AI 7大门派竞速',
+    desc: '「Omega·概率重心」算法登场',
+    code: `import asyncio\nimport random\nimport math\n\n# AI 选手的通用核心算法函数\nasync def ai_racer(name, icon, strategy, target, max_val):\n    low, high = 1, max_val\n    attempts = 0\n    \n    while low <= high:\n        attempts += 1\n        length = high - low\n        \n        # ── 7 种不同的搜索策略 ──\n        if strategy == 'binary':\n            guess = low + length // 2\n        elif strategy == 'random':\n            guess = random.randint(low, high)\n        elif strategy == 'golden':\n            guess = low + int(0.618 * length)\n            if guess == high and length > 0: guess -= 1\n        elif strategy == 'ternary':\n            guess = low + length // 3\n        elif strategy == 'geometric':\n            guess = int(math.sqrt(low * high))\n        elif strategy == 'stoch_binary':\n            if length < 4: guess = low + length // 2\n            else: guess = random.randint(low + length//4, high - length//4)\n            \n        # --- 🤖 终极本命算法 (Omega_概率重心锚定) ---\n        elif strategy == 'ai_native':\n            if length < 8:\n                guess = low + length // 2\n            else:\n                # 震荡因子：利用正弦衰减在 40% ~ 60% 高频区域进行扫荡探测\n                oscillation = math.cos(attempts * 1.6) * 0.12 * (1.0 / (attempts**0.5))\n                pivot = 0.5 + oscillation\n                guess = low + int(length * pivot)\n                \n        # 边界冗余保护\n        guess = max(low, min(high, guess))\n            \n        print(f"{icon} {name} 步数{attempts:02d} | 猜: {guess:<7} (区间: {low}~{high})")\n        \n        # 极速运行：0.03秒停顿实现高频刷屏视觉效果\n        await asyncio.sleep(0.03)\n        \n        if guess == target:\n            print(f"\\n🏆 {icon} 【{name}】 率先命中🎯！耗时: {attempts} 步")\n            return (name, attempts, icon)\n        elif guess < target:\n            low = guess + 1\n        else:\n            high = guess - 1\n            \n    return (name, attempts, icon)\n\nasync def run_race():\n    print("🏁 「AI 算法大比拼」7 大门派·概率重心对抗赛")\n    print("💡 提示：Omega 算法已针对非边缘随机数分布进行了深度进化。")\n    \n    try:\n        max_input = await input("1. 请设定数字的最大范围 (推荐 10万): ")\n        max_val = int(max_input) if max_input.strip() else 100000\n        if max_val < 10: max_val = 100000\n    except:\n        max_val = 100000\n        print("⚠️ 输入无效，范围默认设定为 100000")\n        \n    try:\n        target_input = await input(f"2. 请指定目标数字(1-{max_val})，回车系统随机: ")\n        if target_input.strip():\n            target = int(target_input)\n            target = max(1, min(max_val, target)) \n            print(f"\\n🎯 目标已被设定为: {target}")\n        else:\n            target = random.randint(1, max_val)\n            print(f"\\n🎯 系统已在 1 到 {max_val} 之间随机生成了神秘数字。")\n    except:\n        target = random.randint(1, max_val)\n        print(f"\\n🎯 系统随机生成了神秘数字。")\n        \n    print("🚦 核心算力已就绪，7 大算法选手起跑：\\n")\n    \n    tasks =[\n        ai_racer("Alpha_二分法",   "🔵", "binary", target, max_val),\n        ai_racer("Beta_全随机",    "🟠", "random", target, max_val),\n        ai_racer("Gamma_黄金率",   "🟣", "golden", target, max_val),\n        ai_racer("Delta_三分法",   "🟢", "ternary", target, max_val),\n        ai_racer("Epsi_几何平均",  "🟡", "geometric", target, max_val),\n        ai_racer("Zeta_随机二分",  "🔴", "stoch_binary", target, max_val),\n        ai_racer("Omega_概率重心", "🧠", "ai_native", target, max_val)\n    ]\n    \n    # 真正的高并发异步竞速赛\n    results = await asyncio.gather(*tasks)\n    \n    print("\\n📊 【最终战报统计】")\n    results.sort(key=lambda x: x[1])  # 按步数优劣排序\n    \n    medals =["🥇", "🥈", "🥉", "🏅", "🏅", "🏅", "🏅"]\n    for i, (name, steps, icon) in enumerate(results):\n        print(f" {medals[i]} 第{i+1}名: {icon} {name:<14} (共用时 {steps:02d} 步)")\n\n# 异步启动器\nasyncio.ensure_future(run_race())\n`
+  },
+  {
+    icon: '🎲',
+    name: '猜数字游戏',
+    desc: '智能温感提示的互动小游戏',
+    code: `import random\n\nprint("🎮 欢迎来到猜数字游戏！(1-100)")\ntarget = random.randint(1, 100)\nattempts = 0\nmsg = "请输入你的猜测："\n\nwhile True:\n    try:\n        guess_str = await input(msg)\n        guess = int(guess_str)\n        attempts += 1\n        diff = guess - target\n        \n        if diff > 10:\n            msg = f"你猜了 {guess}，太多了！再试一次："\n            print(msg)\n        elif 0 < diff <= 10:\n            msg = f"你猜了 {guess}，多了点（快接近了）！再试一次："\n            print(msg)\n        elif diff < -10:\n            msg = f"你猜了 {guess}，太少了！再试一次："\n            print(msg)\n        elif -10 <= diff < 0:\n            msg = f"你猜了 {guess}，少了点（快接近了）！再试一次："\n            print(msg)\n        else:\n            print(f"\\n🎉 恭喜你！只用了 {attempts} 次就猜中了数字 {target}！")\n            break\n    except ValueError:\n        msg = "⚠️ 格式错误，请输入有效的整数："\n        print(msg)\n`
+  },
+  {
+    icon: '🦋',
+    name: '蝴蝶曲线',
+    desc: 'Matplotlib 极坐标参数方程',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\n\n# 经典数学之美：蝴蝶曲线 (Butterfly Curve)\n# 发现者：Temple H. Fay (1989)\n\nt = np.linspace(0, 12 * np.pi, 2000)\nx = np.sin(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\ny = np.cos(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\n\nplt.figure(figsize=(6, 6))\nplt.plot(x, y, color='#9C6A10', linewidth=1.2, alpha=0.9)\nplt.title('数学之美：蝴蝶曲线', fontsize=14, pad=15)\nplt.axis('off')\nplt.show()\n`
+  },
+  {
+    icon: '🌌',
+    name: 'Plotly 3D 曲面',
+    desc: '可随意拖拽旋转的 3D 互动图表',
+    code: `import plotly.graph_objects as go\nimport numpy as np\n\nx = np.linspace(-5, 5, 50)\ny = np.linspace(-5, 5, 50)\nx, y = np.meshgrid(x, y)\n\n# 构造类似于滴水波纹的峰值函数\nz = np.sin(np.sqrt(x**2 + y**2))\n\nfig = go.Figure(data=[go.Surface(z=z, x=x, y=y, colorscale='Viridis')])\nfig.update_layout(title='3D 波动曲面 (手指拖拽可旋转)', autosize=False,\n                  width=600, height=500, margin=dict(l=65, r=50, b=65, t=90))\nfig\n`
+  },
+  {
+    icon: '🌀',
+    name: '洛伦兹吸引子',
+    desc: '混沌理论：蝴蝶效应的震撼呈现',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.integrate import solve_ivp\n\n# 洛伦兹方程：描述大气对流的混沌系统\n# 任何微小初始扰动都会导致完全不同的轨迹\ndef lorenz(t, s, sigma=10, beta=8/3, rho=28):\n    x, y, z = s\n    return[sigma * (y - x), x * (rho - z) - y, x * y - beta * z]\n\n# 两条初始条件仅相差 1e-8 的轨迹，演示蝴蝶效应\nresults = []\nfor eps in[0.0, 1e-8]:\n    sol = solve_ivp(\n        lorenz, (0, 40), [1.0 + eps, 1.0, 1.0],\n        t_eval=np.linspace(0, 40, 8000), rtol=1e-9\n    )\n    results.append(sol)\n\nfig = plt.figure(figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\n\n# 左图：吸引子全貌\nax1 = fig.add_subplot(121, projection='3d')\nax1.set_facecolor('#0d1117')\nx, y, z = results[0].y\nax1.scatter(x, y, z, c=results[0].t, cmap='plasma', s=0.3, alpha=0.6)\nax1.set_title('洛伦兹吸引子', color='white', fontsize=11)\nfor spine in[ax1.xaxis, ax1.yaxis, ax1.zaxis]: spine.pane.fill = False\nax1.tick_params(colors='#555')\n\n# 右图：蝴蝶效应——两条轨迹随时间的偏离\nax2 = fig.add_subplot(122)\nax2.set_facecolor('#0d1117')\nt = results[0].t\ndist = np.linalg.norm(results[0].y - results[1].y, axis=0)\nax2.semilogy(t, dist + 1e-15, color='#ff6b6b', linewidth=1)\nax2.set_title('蝴蝶效应：初始差 1e-8 的两轨迹偏离距离', color='white', fontsize=9)\nax2.set_xlabel('时间', color='#888')\nax2.set_ylabel('轨迹间距 (对数轴)', color='#888')\nax2.tick_params(colors='#666')\nfor s in ax2.spines.values(): s.set_edgecolor('#333')\nax2.grid(True, alpha=0.15)\n\nplt.tight_layout()\nplt.show()\n\nprint("左图：同一吸引子被无数轨迹填满，却从不重复——这就是确定性混沌。")\nprint("右图：两条几乎相同的起点，约20个时间单位后轨迹完全发散。")\n`
+  },
+  {
+    icon: '🧬',
+    name: '高精度分形',
+    desc: '无穷细节的边界：曼德勃罗特集合',
+    code: `import numpy as np\nfrom PIL import Image\nimport time\n\n# 曼德勃罗特集合对于复平面上的点 c，反复迭代 z = z² + c\n# 但边界处的结构极其精妙复杂，是真正的数学奇迹。\nW, H = 800, 600\nMAX_ITER = 120\nx_min, x_max = -2.0, 0.5\ny_min, y_max = -1.25, 1.25\n\nprint(f"正在全速渲染 {W}×{H} 曼德勃罗特集合分形图...")\nstart = time.time()\n\nx = np.linspace(x_min, x_max, W)\ny = np.linspace(y_min, y_max, H)\nC = x[np.newaxis, :] + 1j * y[:, np.newaxis]\nZ = np.zeros_like(C)\nM = np.zeros(C.shape, dtype=float)\nmask = np.ones(C.shape, dtype=bool)\n\nfor i in range(MAX_ITER):\n    Z[mask] = Z[mask] ** 2 + C[mask]\n    escaped = mask & (np.abs(Z) > 2)\n    # 平滑着色补偿\n    M[escaped] = i + 1 - np.log2(np.log2(np.abs(Z[escaped]) + 1e-5))\n    mask[escaped] = False\n\nprint(f"核心矩阵计算完成，耗时 {time.time()-start:.2f}s")\n\n# 蓝紫-金色调色板映射\nM_norm = (M / MAX_ITER) ** 0.42\nM_norm = (M_norm - M_norm.min()) / (M_norm.max() - M_norm.min() + 1e-9)\nr = np.uint8(np.clip(9   * (1-M_norm) * M_norm**3 * 255, 0, 255))\ng = np.uint8(np.clip(15  * (1-M_norm)**2 * M_norm**2 * 255, 0, 255))\nb = np.uint8(np.clip(8.5 * (1-M_norm)**3 * M_norm   * 255, 0, 255))\nrgb = np.stack([r, g, b], axis=-1)\n\nimg = Image.fromarray(rgb)\nprint(f"集合内点（纯黑色区域）占比: {(~mask).mean():.1%}")\nimg\n`
+  },
+  {
+    icon: '🏃',
+    name: '排序算法赛跑',
+    desc: '横向对比冒泡/插入/快排/归并性能',
+    code: `import random\nimport matplotlib.pyplot as plt\n\n# 算法的真正差异在数据规模变大时才能体现。\n# 这里用"核心操作次数"作为公平指标，排除底层语言实现差异。\n\ndef bubble_sort(arr):\n    a, ops = arr[:], 0\n    n = len(a)\n    for i in range(n):\n        for j in range(n - i - 1):\n            ops += 1\n            if a[j] > a[j+1]:\n                a[j], a[j+1] = a[j+1], a[j]\n    return ops\n\ndef merge_sort(arr):\n    ops = [0]\n    def _merge(a):\n        if len(a) <= 1: return a\n        mid = len(a) // 2\n        L, R = _merge(a[:mid]), _merge(a[mid:])\n        result, i, j =[], 0, 0\n        while i < len(L) and j < len(R):\n            ops[0] += 1\n            if L[i] <= R[j]: result.append(L[i]); i += 1\n            else:             result.append(R[j]); j += 1\n        return result + L[i:] + R[j:]\n    _merge(arr[:])\n    return ops[0]\n\ndef quick_sort(arr):\n    ops = [0]\n    def _qs(a):\n        if len(a) <= 1: return a\n        pivot = a[len(a) // 2]\n        left =[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x < pivot]\n        mid  = [x for x in a if x == pivot]\n        right=[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x > pivot]\n        return _qs(left) + mid + _qs(right)\n    _qs(arr[:])\n    return ops[0]\n\n# 测试不同规模\nsizes  =[10, 50, 100, 200, 500, 1000]\nalgos  =[('冒泡排序 O(n²)',    '#ff6b6b', bubble_sort),\n          ('归并排序 O(n log n)', '#58a6ff', merge_sort),\n          ('快速排序 O(n log n)', '#3fb950', quick_sort)]\n\nresults = {name:[] for name, _, _ in algos}\nfor size in sizes:\n    arr = random.sample(range(size * 10), size)\n    for name, _, fn in algos:\n        results[name].append(fn(arr))\n\nfig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\nfor ax in [ax1, ax2]:\n    ax.set_facecolor('#0d1117')\n    ax.tick_params(colors='#666')\n    for s in ax.spines.values(): s.set_edgecolor('#333')\n    ax.grid(True, alpha=0.1)\n\nfor name, color, _ in algos:\n    ax1.plot(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n    ax2.semilogy(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n\nfor ax, title in [(ax1, '核心对比次数（线性轴）'), (ax2, '核心对比次数（对数轴）')]:\n    ax.set_xlabel('数组大小 n', color='#aaa')\n    ax.set_ylabel('比较次数', color='#aaa')\n    ax.set_title(title, color='white')\n    ax.legend(facecolor='#1a1a2e', labelcolor='white', fontsize=8)\n\nplt.tight_layout()\nplt.show()\n\nprint("📊 规模 n=1000 时的最终比较次数：")\nfor name, _, _ in algos:\n    print(f"  {name:<18}: {results[name][-1]:>8,} 次")\n`
+  },
+  {
+    icon: '🕸️',
+    name: '小世界网络',
+    desc: '六度分隔理论：NetworkX 图论建模',
+    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\n# 「六度分隔」假说：世界上任意两人之间，最多通过6个中间人就能相连。\n# Watts-Strogatz 小世界模型能精确再现这种结构。\n\n# 生成三种网络对比\nN = 60\nGs = {\n    '规则环形网络\\n(只能认识邻居)': nx.watts_strogatz_graph(N, 6, 0.0, seed=42),\n    '小世界网络\\n(极少量人随机结识远方朋友)': nx.watts_strogatz_graph(N, 6, 0.1, seed=42),\n    '完全随机网络\\n(全屏乱点谱)':  nx.watts_strogatz_graph(N, 6, 1.0, seed=42),\n}\n\nfig, axes = plt.subplots(1, 3, figsize=(13, 5))\nfig.patch.set_facecolor('#0d1117')\ncolors = ['#58a6ff', '#3fb950', '#ff6b6b']\n\nfor ax, (name, G), color in zip(axes, Gs.items(), colors):\n    ax.set_facecolor('#0d1117')\n    pos = nx.circular_layout(G)\n\n    # 计算网络指标\n    C = nx.average_clustering(G)\n    L = nx.average_shortest_path_length(G)\n\n    # 用度数映射节点大小\n    degrees = dict(G.degree())\n    node_sizes = [degrees[n] * 8 + 20 for n in G.nodes()]\n\n    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.15, edge_color='#444', width=0.5)\n    nx.draw_networkx_nodes(G, pos, ax=ax, node_size=node_sizes, node_color=color, alpha=0.85)\n    ax.set_title(name, color='white', fontsize=10, pad=10)\n    ax.text(0.5, -0.05, f'聚集度 C = {C:.3f}\\n相隔度 L = {L:.2f}', \n            transform=ax.transAxes, ha='center', color='#aaa', fontsize=9)\n    ax.axis('off')\n\nplt.tight_layout()\nplt.show()\n\nprint("🤯 小世界网络（中图）的奇妙之处：")\nprint("仅仅有 10% 的人结交了远方的朋友，就能让整个社交圈的平均相隔人数从极高骤降到极低！")\n`
+  },
+  {
+    icon: '🎵',
+    name: '声音频谱分析',
+    desc: '生成 Cmaj7 和弦并用 FFT 拆解和声',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.fft import rfft, rfftfreq\n\n# 音乐和声的数学本质：和谐的音程对应简单整数比的频率\n# C大七和弦 (Cmaj7) 的构造\nsr = 44100  # 采样率\nt = np.linspace(0, 1.0, sr, endpoint=False)\n\nnotes = {\n    'C4 (Do)': 261.63,\n    'E4 (Mi)': 329.63,\n    'G4 (Sol)': 392.00,\n    'B4 (Ti)': 493.88,\n}\n\n# 生成每个音符的正弦波，并叠加成和弦\nwaves = {name: np.sin(2 * np.pi * freq * t) for name, freq in notes.items()}\nchord = sum(waves.values()) / len(waves)\n\nfig, (ax_t, ax_f) = plt.subplots(2, 1, figsize=(10, 6))\nfig.patch.set_facecolor('#0d1117')\nfor ax in[ax_t, ax_f]:\n    ax.set_facecolor('#0d1117')\n    ax.tick_params(colors='#666')\n    for s in ax.spines.values(): s.set_edgecolor('#333')\n    ax.grid(True, alpha=0.1)\n\n# 上图：时域波形（叠加后的错综复杂）\nax_t.plot(t[:1000] * 1000, chord[:1000], color='#ff6b6b', linewidth=1.2)\nax_t.set_title('Cmaj7 和弦的时域复合波形 (前 20 毫秒)', color='white')\nax_t.set_xlabel('时间 (ms)', color='#aaa')\nax_t.set_ylabel('振幅', color='#aaa')\n\n# 下图：频域波形（FFT 快速傅里叶变换，一秒拆解和声！）\nyf = np.abs(rfft(chord)) * 2 / sr\nxf = rfftfreq(sr, 1 / sr)\nmask = xf < 800  # 只看 800Hz 以下\nax_f.plot(xf[mask], yf[mask], color='#58a6ff', linewidth=1.5)\nax_f.set_title('Cmaj7 的频域频谱 (FFT 拆解分析)', color='white')\nax_f.set_xlabel('频率 (Hz)', color='#aaa')\nax_f.set_ylabel('能量强度', color='#aaa')\n\n# 标出峰值\nfor name, freq in notes.items():\n    ax_f.axvline(freq, color='#3fb950', linestyle='--', alpha=0.5)\n    ax_f.text(freq + 5, 0.4, name, color='#3fb950', rotation=90)\n\nplt.tight_layout()\nplt.show()\nprint("上方是你听到的“复杂波形”，下方是傅里叶变换(FFT)像棱镜一样把它拆解出来的“纯粹频率”。")\n`
+  },
+  {
+    icon: '🔐',
+    name: 'RSA 加密原理',
+    desc: '利用大素数原理从零手搓非对称加密',
+    code: `import random\nimport math\n\n# RSA 的数学基础：\n# 两个大素数相乘极快，但把乘积拆解回两个素数却极其困难。\n# 这种\"单向性\"构成了现代互联网（HTTPS）安全的基础。\n\ndef is_prime(n, k=10):\n    if n < 2: return False\n    if n in (2, 3): return True\n    if n % 2 == 0: return False\n    r, d = 0, n - 1\n    while d % 2 == 0: r += 1; d //= 2\n    for _ in range(k):\n        a = random.randrange(2, n - 1)\n        x = pow(a, d, n)\n        if x in (1, n-1): continue\n        for _ in range(r - 1):\n            x = pow(x, 2, n)\n            if x == n - 1: break\n        else: return False\n    return True\n\ndef gen_prime(bits=16):\n    while True:\n        n = random.getrandbits(bits) | (1 << bits-1) | 1\n        if is_prime(n): return n\n\ndef extended_gcd(a, b):\n    if a == 0: return b, 0, 1\n    g, x, y = extended_gcd(b % a, a)\n    return g, y - (b // a) * x, x\n\nprint("═" * 50)\nprint(" 🛡️ RSA 公钥加密系统 — 原理全透视")\nprint("═" * 50)\n\n# 1. 密钥生成\np, q = gen_prime(24), gen_prime(24)\nwhile q == p: q = gen_prime(24)\nn = p * q                # 公钥模数\nphi = (p-1) * (q-1)      # 欧拉函数\ne = 65537                # 公钥指数\n_, d, _ = extended_gcd(e, phi)\nd = d % phi              # 私钥指数\n\nprint("\\n【1. 银行生成秘钥对】")\nprint(f"  随机素数 p = {p}, q = {q} (绝对保密)")\nprint(f"  向全网公开的【公钥】: (n={n}, e={e})")\nprint(f"  银行自己藏好的【私钥】: d={d}")\n\n# 2. 客户加密\nmsg = 42099\nprint(f"\\n【2. 你给银行发消息】")\nprint(f"  你要汇款的金额 m = {msg}")\nc = pow(msg, e, n)       # 核心加密公式：c = m^e % n\nprint(f"  用银行公钥加密后，网络上传输的密文 c = {c}")\nprint(f"  (黑客即便截获密文 {c}，没有私钥 d 也完全解不开)")\n\n# 3. 银行解密\nprint(f"\\n【3. 银行解密消息】")\ndecrypted = pow(c, d, n) # 核心解密公式：m = c^d % n\nprint(f"  银行用自己的私钥 d 还原消息: {decrypted}")\nprint(f"\\n✅ 还原{'成功' if decrypted == msg else '失败'}！欧拉定理诚不欺我！")\n`
+  }
 ];
 
 function renderSnippets() {
@@ -1876,30 +1945,6 @@ async function copyCode() {
 
 // ── Start ──
 initPyodide();
-</script>
-<script>
-// ── PWA Service Worker 注册 ──
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('[PWA] SW registered, scope:', reg.scope))
-      .catch(err => console.warn('[PWA] SW registration failed:', err));
-  });
-}
-
-// ── PWA 安装提示 ──
-let _deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  _deferredPrompt = e;
-  // 显示一个轻提示（只显示一次）
-  if (!localStorage.getItem('pwa_prompted')) {
-    setTimeout(() => {
-      showToast('📲 可安装到桌面 — 点击浏览器菜单「添加到主屏幕」');
-      localStorage.setItem('pwa_prompted', '1');
-    }, 4000);
-  }
-});
 </script>
 <script>
 if ('serviceWorker' in navigator) {
