@@ -298,7 +298,6 @@
     flex: 1; position: relative; overflow: hidden;
     display: flex;
   }
-  /* highlight pre 作视觉层，textarea 作输入层，完全重叠 */
   #highlight-pre, #editor {
     position: absolute; inset: 0;
     margin: 0; padding: 14px 14px 60px 14px;
@@ -310,41 +309,41 @@
   #highlight-pre {
     background: transparent; border: none;
     overflow: hidden; pointer-events: none;
-    z-index: 1; color: transparent; /* 文字透明，只显示 span 颜色 */
+    z-index: 1; color: transparent; 
   }
   #highlight-code {
     font-family: inherit; font-size: inherit;
     line-height: inherit; display: block;
     background: none !important;
   }
+  
+  /* [修复2] 彻底隐藏 textarea 的系统自带滚动条带来的物理体积挤压错位 */
+  #editor::-webkit-scrollbar { display: none; }
   #editor {
     background: transparent; border: none; outline: none;
     resize: none; z-index: 2;
-    color: var(--text); caret-color: var(--accent);
     overflow: auto;
     -webkit-overflow-scrolling: touch;
-    /* 字色设为半透明，Prism token 的颜色透过来 */
     color: transparent;
     caret-color: var(--accent);
     -webkit-text-fill-color: transparent;
+    scrollbar-width: none;
   }
-  /* 选中区域必须可见 */
   #editor::selection { background: rgba(201,107,58,0.2); -webkit-text-fill-color: transparent; }
 
-  /* ── Prism Python 语法配色（light）── */
-  #highlight-code .token.comment, #highlight-code .token.prolog { color: #9A9890; font-style: italic; }
-  #highlight-code .token.keyword { color: #B85A28; font-weight: 600; }
+  /*[修复1] 移除粗体(font-weight: 600)与斜体(italic)，防止因等宽字体字重导致物理尺寸变化引发严重横向错位 */
+  #highlight-code .token.comment, #highlight-code .token.prolog { color: #9A9890; }
+  #highlight-code .token.keyword { color: #B85A28; }
   #highlight-code .token.builtin { color: #1A5CA8; }
   #highlight-code .token.string, #highlight-code .token.string-interpolation { color: #2A7A4A; }
   #highlight-code .token.number { color: #1A5CA8; }
   #highlight-code .token.operator { color: #5A5750; }
   #highlight-code .token.punctuation { color: #8A8680; }
   #highlight-code .token.function { color: #7B3F00; }
-  #highlight-code .token.class-name { color: #7B3F00; font-weight: 600; }
+  #highlight-code .token.class-name { color: #7B3F00; }
   #highlight-code .token.decorator { color: #9A6A10; }
   #highlight-code .token.boolean, #highlight-code .token.constant { color: #B85A28; }
-  #highlight-code .token.important { color: #B02828; font-weight: 600; }
-  /* 未命中 token 的普通文字 */
+  #highlight-code .token.important { color: #B02828; }
   #highlight-code { color: #1C1A17; }
 
   @media (prefers-color-scheme: dark) {
@@ -356,19 +355,18 @@
     #highlight-code .token.operator { color: #8A8780; }
     #highlight-code .token.punctuation { color: #555250; }
     #highlight-code .token.function { color: #E0A840; }
-    #highlight-code .token.class-name { color: #E0A840; font-weight: 600; }
+    #highlight-code .token.class-name { color: #E0A840; }
     #highlight-code .token.decorator { color: #E0A840; }
     #highlight-code .token.boolean, #highlight-code .token.constant { color: #E07840; }
-    #highlight-code .token.important { color: #E06060; font-weight: 600; }
+    #highlight-code .token.important { color: #E06060; }
     #highlight-code { color: #EEEAE4; }
   }
 
-  /* 错误行高亮 */
+  /* [修复4] 移除 display:block 与 margin，采用纯行内圆角背景，彻底根除运行排版被挤乱的问题 */
   .editor-error-line {
-    background: var(--red-bg);
-    border-left: 3px solid var(--red);
-    display: block;
-    margin-left: -14px; padding-left: 11px;
+    background: rgba(176, 40, 40, 0.2);
+    border-radius: 3px;
+    padding: 1px 2px;
   }
 
   /* ── Output panel ── */
@@ -686,7 +684,7 @@
     </div>
   </div>
 
-  <!-- Toolbar (above keyboard / at bottom) -->
+  <!-- Toolbar -->
   <div id="toolbar">
     <button class="run-btn loading" id="run-btn" onclick="toggleRun()" title="运行 (Ctrl+Enter)">
       <svg id="run-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
@@ -824,12 +822,10 @@ let tabs = _savedState ? _savedState.tabs :[{ name: 'main.py', code: _INITIAL_CO
 if (_savedState) {
   activeTab = Math.min(_savedState.active, tabs.length - 1);
 }
-// 每 3 秒自动保存
 setInterval(saveState, 3000);
 
 // ── Pyodide init ──
 async function initPyodide() {
-  // 初始化编辑器
   const _initCode = (tabs && tabs[activeTab]) ? tabs[activeTab].code : (_INITIAL_CODE || '');
   initEditor(_initCode);
   try {
@@ -842,7 +838,6 @@ async function initPyodide() {
       } 
     };
 
-    // 虚拟平滑进度补偿：解决 loadPyodide 漫长下载时进度条死机的视觉痛点
     setLoadMsg('正在建立与 Python 的连接...', 5);
     let fakePct = 5;
     const fakeInterval = setInterval(() => {
@@ -855,12 +850,11 @@ async function initPyodide() {
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/' });
     clearInterval(fakeInterval);
 
-    // 核心包分阶段真实进度注入
     const pkgGroups =[
       { label: '加载数值计算库 (numpy, scipy)...', pkgs:['numpy', 'scipy', 'micropip'], pct: 45 },
       { label: '加载数据分析库 (pandas, statsmodels)...', pkgs:['pandas', 'statsmodels'], pct: 55 },
       { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'], pct: 65 },
-      { label: '加载机器学习库 (sklearn, sympy)...', pkgs: ['scikit-learn', 'sympy'], pct: 75 },
+      { label: '加载机器学习库 (sklearn, sympy)...', pkgs:['scikit-learn', 'sympy'], pct: 75 },
       { label: '加载网络架构库 (networkx)...', pkgs: ['networkx', 'pyodide-http'], pct: 80 },
     ];
     for (const g of pkgGroups) {
@@ -873,10 +867,8 @@ async function initPyodide() {
       await pyodide.runPythonAsync("import micropip; await micropip.install(['seaborn', 'plotly'])");
     } catch(_) {}
 
-    // ── 下载思源黑体 OTF 并注册给 Matplotlib（FreeType 只支持 TTF/OTF）──
     setLoadMsg('正在加载中文字体，让图表更清晰...', 92);
     try {
-      // NotoSansCJK Regular OTF，托管于 jsDelivr，约 10 MB
       const fontUrl = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf';
       const fontResp = await fetch(fontUrl);
       if (!fontResp.ok) throw new Error('font fetch ' + fontResp.status);
@@ -945,7 +937,6 @@ async function runCode() {
   const t0 = performance.now();
   let outputEl = document.getElementById('output-content');
 
-  // Redirect stdout/stderr（只注册一次）
   if (!window._captureInstalled) {
     window._captureInstalled = true;
     pyodide.runPython(`
@@ -964,7 +955,6 @@ sys.stderr = _Capture('stderr')
     window._pyrunner_write = (kind, s) => appendOutput(s, kind === 'stderr' ? 'stderr' : null);
   }
 
-  // Override input()（只安装一次）
   if (!window._inputInstalled) {
     window._inputInstalled = true;
     pyodide.runPython(`
@@ -995,16 +985,13 @@ builtins.input = _custom_input
   };
 
   try {
-    // ── 自动检测并安装缺失的包 ──
     const importLines = code.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gm) ||[];
     const pkgSet = new Set();
     importLines.forEach(line => {
       const m = line.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
       if (m) pkgSet.add(m[1]);
     });
-    // 标准库 + 已预装的包，无需尝试安装
     const builtins = new Set([
-      // ── Python 标准库（完整） ──
       'sys','os','io','re','math','time','json','random','datetime','collections',
       'itertools','functools','pathlib','string','struct','hashlib','base64',
       'copy','types','abc','enum','typing','dataclasses','contextlib','warnings',
@@ -1024,22 +1011,17 @@ builtins.input = _custom_input
       'poplib','imaplib','smtplib','telnetlib','nntplib','calendar','sched',
       'timezone','zoneinfo','profile','pstats','timeit','cProfile',
       'trace','sys','atexit','faulthandler','site','sitecustomize',
-      // ── Pyodide 预装 / 内置 ──
       'numpy','pandas','matplotlib','scipy','sklearn','scikit_learn',
       'sympy','PIL','Pillow','statsmodels','micropip',
       'js','pyodide','_pyodide','pyodide_http',
-      // 子模块（from X import Y 只提取 X，这里列出常见顶层名）
       'cv2','skimage','plotly','bokeh','altair','seaborn','networkx','xgboost','lightgbm','requests','pyodide_http','pyodide-http','plotly.graph_objects','plotly.express','go','px',
       'requests','aiohttp','flask','fastapi','pydantic','attrs','tqdm',
-      // ── 常见顶层别名 ──
       'np','pd','plt','sp','sns',
     ]);
     const toInstall = [...pkgSet].filter(p => !builtins.has(p));
     if (toInstall.length > 0) {
       appendOutput(`📦 检测到未预装的包，正在自动安装: ${toInstall.join(', ')}...\n`, 'info');
-      // 优先用 loadPackage（Pyodide 原生编译包），失败再用 micropip（PyPI 纯 Python 包）
       for (const pkg of toInstall) {
-        // 先尝试 loadPackage（Pyodide 原生编译包）
         let installed = false;
         try {
           await pyodide.loadPackage(pkg);
@@ -1048,8 +1030,6 @@ builtins.input = _custom_input
         } catch (_) {}
 
         if (!installed) {
-          // 再尝试 micropip（PyPI 纯 Python 包）
-          // 注意：带连字符的包名（如 pyodide-http）micropip 无法处理，跳过
           const pipName = pkg.replace(/-/g, '_');
           try {
             await pyodide.runPythonAsync(
@@ -1066,7 +1046,6 @@ builtins.input = _custom_input
       }
     }
 
-    // Handle matplotlib + 确保每次运行都应用中文字体
     const hasPlt = code.includes('matplotlib') || code.includes('plt.');
     if (hasPlt) {
       pyodide.runPython(`
@@ -1074,7 +1053,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib as mpl, matplotlib.font_manager as fm
 import os
-# 如果 OTF 文件存在但字体未注册（例如页面缓存），重新注册
 if os.path.exists('/tmp/NotoSansSC.otf'):
     _registered =[f.name for f in fm.fontManager.ttflist if 'Noto Sans SC' in f.name]
     if not _registered:
@@ -1085,26 +1063,16 @@ mpl.rcParams['axes.unicode_minus'] = False
 `);
     }
 
-    // ── 运行前同步编辑器内容 ──
     const _edSync = document.getElementById('editor'); if(_edSync) tabs[activeTab].code = _edSync.value;
-    // ── 运行前快照 __main__ 的 key 集合 ──
     const _preRunKeys = new Set(
       pyodide.runPython("import __main__; list(vars(__main__).keys())").toJs()
     );
 
     const _userResult = await pyodide.runPythonAsync(code);
 
-    // ── 图像收集必须在删变量之前，确保能扫到本次新增的图像对象 ──
-    // （删除在图像渲染完成之后进行，见下方）
-
-    // ── 统一图像渲染（matplotlib / Plotly / PIL / bytes）──
-    // 把所有 Python 探测逻辑注册为全局函数，一次注册多次可复用
-    // ── 只注册一次收集函数 ──
-    // 每次重新注册图像收集函数
     pyodide.runPython([
       "import sys as _sys, io as _io, base64 as _b64",
       "",
-      "# magic bytes 常量",
       "_PNG_SIG = bytes([137,80,78,71,13,10,26,10])",
       "_JPG_SIG = bytes([255,216,255])",
       "_GIF_SIG = bytes([71,73,70,56])",
@@ -1119,7 +1087,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       "",
       "def _bytes_to_b64(raw):",
       "    raw = bytes(raw)",
-      "    # 检测格式并统一转为 PNG base64（JPEG/GIF/BMP/WEBP 直接传原格式）",
       "    if raw[:8] == _PNG_SIG: mime='png'",
       "    elif raw[:3] == _JPG_SIG: mime='jpeg'",
       "    elif raw[:4] == _GIF_SIG: mime='gif'",
@@ -1129,19 +1096,17 @@ mpl.rcParams['axes.unicode_minus'] = False
       "    return _b64.b64encode(raw).decode(), mime",
       "",
       "def _pyrunner_collect(extra=None):",
-      "    _images  =[]   # list of (b64, mime)",
-      "    _plotlys =[]   # list of json str",
+      "    _images  =[]",
+      "    _plotlys =[]",
       "    _seen    = set()",
       "",
       "    import __main__",
       "    _ns = dict(vars(__main__))",
       "",
-      "    # ── 处理单个值（返回值 / 命名空间扫描共用）──",
       "    def _absorb(v):",
       "        if id(v) in _seen: return",
       "        _seen.add(id(v))",
       "",
-      "        # Plotly Figure",
       "        try:",
       "            from plotly.basedatatypes import BaseFigure as _BF",
       "            if isinstance(v, _BF):",
@@ -1149,7 +1114,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                return",
       "        except Exception: pass",
       "",
-      "        # matplotlib Figure",
       "        try:",
       "            import matplotlib.figure as _mf",
       "            if isinstance(v, _mf.Figure):",
@@ -1160,7 +1124,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                return",
       "        except Exception: pass",
       "",
-      "        # PIL / Pillow Image",
       "        try:",
       "            from PIL.Image import Image as _PI",
       "            if isinstance(v, _PI):",
@@ -1168,7 +1131,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                return",
       "        except Exception: pass",
       "",
-      "        # pandas DataFrame → HTML table",
       "        try:",
       "            import pandas as _pd",
       "            if isinstance(v, _pd.DataFrame) and len(v) > 0:",
@@ -1177,18 +1139,16 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                return",
       "        except Exception: pass",
       "",
-      "        # pandas Series",
       "        try:",
       "            import pandas as _pd",
       "            if isinstance(v, _pd.Series) and len(v) > 0:",
       "                _dfs = v.reset_index()",
-      "                _dfs.columns = [str(c) for c in _dfs.columns]",
+      "                _dfs.columns =[str(c) for c in _dfs.columns]",
       "                _html = _dfs.to_html(max_rows=50, border=0, classes='pr-table')",
       "                _images.append(('__html__:' + _html, 'html'))",
       "                return",
       "        except Exception: pass",
       "",
-      "        # seaborn FacetGrid / AxesSubplot",
       "        try:",
       "            _fig2 = getattr(v, 'fig', None) or getattr(v, 'figure', None)",
       "            if _fig2 is not None and hasattr(_fig2, 'savefig') and id(_fig2) not in _seen:",
@@ -1200,7 +1160,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                return",
       "        except Exception: pass",
       "",
-      "        # scikit-image ndarray (2-D gray or 3-D HxWxC)",
       "        try:",
       "            import numpy as _np",
       "            if isinstance(v, _np.ndarray) and v.dtype in (_np.uint8, _np.float32, _np.float64):",
@@ -1215,14 +1174,12 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                    return",
       "        except Exception: pass",
       "",
-      "        # raw bytes / bytearray",
       "        try:",
       "            if isinstance(v, (bytes, bytearray)) and len(v) > 100:",
       "                _b64s, _mime = _bytes_to_b64(v)",
       "                if _b64s: _images.append((_b64s, _mime))",
       "        except Exception: pass",
       "",
-      "        # io.BytesIO",
       "        try:",
       "            if isinstance(v, _io.BytesIO):",
       "                v.seek(0)",
@@ -1232,7 +1189,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                    if _b64s: _images.append((_b64s, _mime))",
       "        except Exception: pass",
       "",
-      "        # list / tuple of PIL Images or ndarrays (图像序列)",
       "        try:",
       "            if isinstance(v, (list, tuple)) and 1 <= len(v) <= 64:",
       "                from PIL.Image import Image as _PI2",
@@ -1242,11 +1198,9 @@ mpl.rcParams['axes.unicode_minus'] = False
       "                    for _sub in v: _absorb(_sub)",
       "        except Exception: pass",
       "",
-      "    # ── 先处理返回值（优先展示）──",
       "    if extra is not None:",
       "        _absorb(extra)",
       "",
-      "    # ── matplotlib 未关闭的 figure（plt.show() 未调用时）──",
       "    try:",
       "        import matplotlib.pyplot as _plt",
       "        for _fn in list(_plt.get_fignums()):",
@@ -1260,26 +1214,21 @@ mpl.rcParams['axes.unicode_minus'] = False
       "        _plt.close('all')",
       "    except Exception: pass",
       "",
-      "    # ── 扫描 __main__ 命名空间 ──",
       "    for _v in list(_ns.values()):",
       "        _absorb(_v)",
       "",
       "    return[_images, _plotlys]",
     ].join("\n"));
 
-    // 把返回值传给 Python 侧并执行收集
     pyodide.globals.set("_pyrunner_retval", _userResult ?? null);
     const _raw = pyodide.runPython("_pyrunner_collect(extra=_pyrunner_retval)");
-    const _imgPairs   = _raw.get(0).toJs();   // [[b64, mime], ...]
-    const plotlyJsons = _raw.get(1).toJs();   //[json_str, ...]
+    const _imgPairs   = _raw.get(0).toJs();
+    const plotlyJsons = _raw.get(1).toJs();
     _raw.destroy();
-    // 兼容旧渲染代码：提取 b64 列表
     const b64List = _imgPairs.map(p => Array.isArray(p) ? p[0] : p);
     const mimeList = _imgPairs.map(p => Array.isArray(p) ? p[1] : 'png');
 
-    // ── 渲染 Plotly 交互图表 ──
     if (plotlyJsons && plotlyJsons.length > 0) {
-      // 按需加载 Plotly.js（只加载一次）
       if (!window.Plotly) {
         appendOutput('⏳ 正在加载 Plotly.js...\n', 'info');
         await new Promise((res, rej) => {
@@ -1299,7 +1248,6 @@ mpl.rcParams['axes.unicode_minus'] = False
         const wrap = document.createElement('div');
         wrap.style.cssText = 'width:100%;height:420px;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:10px 0;background:var(--surface);';
         outputEl.appendChild(wrap);
-        // 让 DOM 先渲染，再 plot，确保尺寸正确
         await new Promise(r => requestAnimationFrame(r));
         Plotly.newPlot(wrap, figData.data, figData.layout, {
           responsive:true, displayModeBar:true,
@@ -1309,16 +1257,13 @@ mpl.rcParams['axes.unicode_minus'] = False
       }
     }
 
-    // ── 渲染图像 / DataFrame 表格 ──
     for (let _ri = 0; _ri < b64List.length; _ri++) {
       const b64 = b64List[_ri], mime = mimeList[_ri] || 'png';
       if (!b64) continue;
-      // DataFrame HTML 表格
       if (b64.startsWith('__html__:')) {
         const wrap = document.createElement('div');
         wrap.className = 'out-line image-out';
         wrap.style.cssText = 'overflow-x:auto;margin:10px 0;border:1px solid var(--border);border-radius:10px;';
-        // 把 <style> 注入到 <head>（只注入一次），避免泄漏进 textContent
         if (!document.getElementById('pr-table-style')) {
           const st = document.createElement('style');
           st.id = 'pr-table-style';
@@ -1352,8 +1297,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       outputEl.appendChild(wrap2);
     }
 
-    // ── 渲染完成后清理本次新增的用户变量，防止污染下一次运行 ──
-    // 保留所有以 _pyrunner_ / _PNG_ / _JPG_ / _b64 / _io 等开头的内部工具名
     const _INTERNAL_PREFIX =['_pyrunner_', '_PNG_SIG', '_JPG_SIG', '_GIF_SIG',
       '_BMP_SIG', '_WEBP_SIG', '_to_png_b64', '_bytes_to_b64', '_b64', '_io', '_sys',
       '_orig_input', '_custom_input', '_Capture', '_pr_'];
@@ -1380,7 +1323,6 @@ mpl.rcParams['axes.unicode_minus'] = False
       appendOutput('\n⏹ 已手动停止执行', 'info');
       setStatus('ready', '就绪');
     } else {
-      // 提取最关键的错误行，过滤 pyodide 内部堆栈
       const raw = e.message || String(e);
       const lines = raw.split('\n');
       const execIdx = lines.findIndex(l => l.includes('<exec>'));
@@ -1395,6 +1337,7 @@ mpl.rcParams['axes.unicode_minus'] = False
   isRunning = false;
   _stopRequested = false;
   setRunBtn(false);
+  syncScroll(); // 确保重绘后滚动条重新对齐
 }
 
 // ── Output helpers ──
@@ -1404,13 +1347,10 @@ function appendOutput(text, cls) {
   const el = document.getElementById('output-content');
   const ph = el.querySelector('.output-placeholder');
   if (ph) ph.remove();
-  // 按换行分割逐行渲染，避免 print 分片导致的乱行
   const parts = text.split('\n');
   parts.forEach((part, i) => {
     const isLast = i === parts.length - 1;
-    // 末尾空串不单独建行，但若 lastChild 未换行可追加
     if (isLast && part === '') return;
-    // 若上一个 span 同类且未结束，直接追加
     const prev = el.lastChild;
     if (i === 0 && prev && prev._lineOpen && prev._cls === (cls||'')) {
       prev.textContent += part;
@@ -1420,7 +1360,7 @@ function appendOutput(text, cls) {
       span.className = 'out-line' + (cls ? ' ' + cls : '');
       span.textContent = part + (!isLast ? '\n' : '');
       span._cls = cls || '';
-      span._lineOpen = isLast; // 最后一段可能没换行
+      span._lineOpen = isLast;
       el.appendChild(span);
     }
   });
@@ -1478,14 +1418,22 @@ function highlightCode() {
     const ed = document.getElementById('editor');
     const code = document.getElementById('highlight-code');
     if (!ed || !code) return;
-    // 转义 HTML 特殊字符（必须在 Prism 之前）
+    
     const raw = ed.value;
+    let html = '';
     if (typeof Prism !== 'undefined') {
-      code.innerHTML = Prism.highlight(raw, Prism.languages.python, 'python');
+      html = Prism.highlight(raw, Prism.languages.python, 'python');
     } else {
-      // Prism 未加载时显示纯文字
-      code.textContent = raw;
+      // Prism未加载时的转义回退
+      html = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
+    
+    // [修复3] 防止浏览器吃掉末尾换行引发垂直错位，附加零宽空格撑起最后一行
+    if (raw.endsWith('\n')) {
+      html += '&#8203;';
+    }
+    code.innerHTML = html;
+
     // 同步 pre 的滚动位置
     const pre = document.getElementById('highlight-pre');
     if (pre) { pre.scrollTop = ed.scrollTop; pre.scrollLeft = ed.scrollLeft; }
@@ -1518,12 +1466,14 @@ function syncScroll() {
   if (ln) ln.scrollTop = ed.scrollTop;
 }
 
+// [防御] 避免窗口缩放或输入法拉起时打破同步
+window.addEventListener('resize', syncScroll);
+
 // ── 错误行高亮 ──
 let _errLineNo = 0;
 function highlightErrorLine(lineNo) {
   clearErrorHighlight();
   _errLineNo = lineNo;
-  // 重新渲染时在目标行注入 .editor-error-line class
   _renderErrorHighlight();
 }
 function _renderErrorHighlight() {
@@ -1531,20 +1481,25 @@ function _renderErrorHighlight() {
   const ed = document.getElementById('editor');
   const code = document.getElementById('highlight-code');
   if (!ed || !code || typeof Prism === 'undefined') return;
-  const lines = Prism.highlight(ed.value, Prism.languages.python, 'python').split('\n');
+  const raw = ed.value;
+  const lines = Prism.highlight(raw, Prism.languages.python, 'python').split('\n');
   if (_errLineNo >= 1 && _errLineNo <= lines.length) {
     lines[_errLineNo - 1] = '<span class="editor-error-line">' + (lines[_errLineNo - 1] || '\u00a0') + '</span>';
   }
-  code.innerHTML = lines.join('\n');
+  let finalHtml = lines.join('\n');
+  
+  // [修复3] 同样为错误高亮逻辑保持末尾换行保护
+  if (raw.endsWith('\n')) finalHtml += '&#8203;';
+  code.innerHTML = finalHtml;
+  
   // 滚动到出错行
-  const ed2 = document.getElementById('editor');
-  const lineH = parseFloat(getComputedStyle(ed2).lineHeight) || 22;
-  ed2.scrollTop = Math.max(0, (_errLineNo - 4) * lineH);
+  const lineH = parseFloat(getComputedStyle(ed).lineHeight) || 22;
+  ed.scrollTop = Math.max(0, (_errLineNo - 4) * lineH);
   syncScroll();
 }
 function clearErrorHighlight() {
   _errLineNo = 0;
-  highlightCode(); // 重新渲染去掉高亮
+  highlightCode(); 
 }
 
 // ── Editor helpers ──
@@ -1725,6 +1680,7 @@ window.addEventListener('pointermove', (e) => {
   const delta = startY - e.clientY;
   const newH = Math.max(80, Math.min(window.innerHeight * 0.7, startH + delta));
   outputPanel.style.height = newH + 'px';
+  syncScroll(); // 确保拖拽改变尺寸后重新对齐
 });
 window.addEventListener('pointerup', () => { resizing = false; resizer.classList.remove('dragging'); });
 
@@ -1770,13 +1726,13 @@ const SNIPPETS =[
     icon: '🏃',
     name: '排序算法赛跑',
     desc: '横向对比冒泡/插入/快排/归并性能',
-    code: `import random\nimport matplotlib.pyplot as plt\n\n# 算法的真正差异在数据规模变大时才能体现。\n# 这里用"核心操作次数"作为公平指标，排除底层语言实现差异。\n\ndef bubble_sort(arr):\n    a, ops = arr[:], 0\n    n = len(a)\n    for i in range(n):\n        for j in range(n - i - 1):\n            ops += 1\n            if a[j] > a[j+1]:\n                a[j], a[j+1] = a[j+1], a[j]\n    return ops\n\ndef merge_sort(arr):\n    ops = [0]\n    def _merge(a):\n        if len(a) <= 1: return a\n        mid = len(a) // 2\n        L, R = _merge(a[:mid]), _merge(a[mid:])\n        result, i, j =[], 0, 0\n        while i < len(L) and j < len(R):\n            ops[0] += 1\n            if L[i] <= R[j]: result.append(L[i]); i += 1\n            else:             result.append(R[j]); j += 1\n        return result + L[i:] + R[j:]\n    _merge(arr[:])\n    return ops[0]\n\ndef quick_sort(arr):\n    ops = [0]\n    def _qs(a):\n        if len(a) <= 1: return a\n        pivot = a[len(a) // 2]\n        left =[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x < pivot]\n        mid  = [x for x in a if x == pivot]\n        right=[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x > pivot]\n        return _qs(left) + mid + _qs(right)\n    _qs(arr[:])\n    return ops[0]\n\n# 测试不同规模\nsizes  =[10, 50, 100, 200, 500, 1000]\nalgos  =[('冒泡排序 O(n²)',    '#ff6b6b', bubble_sort),\n          ('归并排序 O(n log n)', '#58a6ff', merge_sort),\n          ('快速排序 O(n log n)', '#3fb950', quick_sort)]\n\nresults = {name:[] for name, _, _ in algos}\nfor size in sizes:\n    arr = random.sample(range(size * 10), size)\n    for name, _, fn in algos:\n        results[name].append(fn(arr))\n\nfig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\nfor ax in [ax1, ax2]:\n    ax.set_facecolor('#0d1117')\n    ax.tick_params(colors='#666')\n    for s in ax.spines.values(): s.set_edgecolor('#333')\n    ax.grid(True, alpha=0.1)\n\nfor name, color, _ in algos:\n    ax1.plot(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n    ax2.semilogy(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n\nfor ax, title in [(ax1, '核心对比次数（线性轴）'), (ax2, '核心对比次数（对数轴）')]:\n    ax.set_xlabel('数组大小 n', color='#aaa')\n    ax.set_ylabel('比较次数', color='#aaa')\n    ax.set_title(title, color='white')\n    ax.legend(facecolor='#1a1a2e', labelcolor='white', fontsize=8)\n\nplt.tight_layout()\nplt.show()\n\nprint("📊 规模 n=1000 时的最终比较次数：")\nfor name, _, _ in algos:\n    print(f"  {name:<18}: {results[name][-1]:>8,} 次")\n`
+    code: `import random\nimport matplotlib.pyplot as plt\n\n# 算法的真正差异在数据规模变大时才能体现。\n# 这里用"核心操作次数"作为公平指标，排除底层语言实现差异。\n\ndef bubble_sort(arr):\n    a, ops = arr[:], 0\n    n = len(a)\n    for i in range(n):\n        for j in range(n - i - 1):\n            ops += 1\n            if a[j] > a[j+1]:\n                a[j], a[j+1] = a[j+1], a[j]\n    return ops\n\ndef merge_sort(arr):\n    ops = [0]\n    def _merge(a):\n        if len(a) <= 1: return a\n        mid = len(a) // 2\n        L, R = _merge(a[:mid]), _merge(a[mid:])\n        result, i, j =[], 0, 0\n        while i < len(L) and j < len(R):\n            ops[0] += 1\n            if L[i] <= R[j]: result.append(L[i]); i += 1\n            else:             result.append(R[j]); j += 1\n        return result + L[i:] + R[j:]\n    _merge(arr[:])\n    return ops[0]\n\ndef quick_sort(arr):\n    ops = [0]\n    def _qs(a):\n        if len(a) <= 1: return a\n        pivot = a[len(a) // 2]\n        left =[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x < pivot]\n        mid  =[x for x in a if x == pivot]\n        right=[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x > pivot]\n        return _qs(left) + mid + _qs(right)\n    _qs(arr[:])\n    return ops[0]\n\n# 测试不同规模\nsizes  =[10, 50, 100, 200, 500, 1000]\nalgos  =[('冒泡排序 O(n²)',    '#ff6b6b', bubble_sort),\n          ('归并排序 O(n log n)', '#58a6ff', merge_sort),\n          ('快速排序 O(n log n)', '#3fb950', quick_sort)]\n\nresults = {name:[] for name, _, _ in algos}\nfor size in sizes:\n    arr = random.sample(range(size * 10), size)\n    for name, _, fn in algos:\n        results[name].append(fn(arr))\n\nfig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\nfor ax in [ax1, ax2]:\n    ax.set_facecolor('#0d1117')\n    ax.tick_params(colors='#666')\n    for s in ax.spines.values(): s.set_edgecolor('#333')\n    ax.grid(True, alpha=0.1)\n\nfor name, color, _ in algos:\n    ax1.plot(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n    ax2.semilogy(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n\nfor ax, title in[(ax1, '核心对比次数（线性轴）'), (ax2, '核心对比次数（对数轴）')]:\n    ax.set_xlabel('数组大小 n', color='#aaa')\n    ax.set_ylabel('比较次数', color='#aaa')\n    ax.set_title(title, color='white')\n    ax.legend(facecolor='#1a1a2e', labelcolor='white', fontsize=8)\n\nplt.tight_layout()\nplt.show()\n\nprint("📊 规模 n=1000 时的最终比较次数：")\nfor name, _, _ in algos:\n    print(f"  {name:<18}: {results[name][-1]:>8,} 次")\n`
   },
   {
     icon: '🕸️',
     name: '小世界网络',
     desc: '六度分隔理论：NetworkX 图论建模',
-    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\n# 「六度分隔」假说：世界上任意两人之间，最多通过6个中间人就能相连。\n# Watts-Strogatz 小世界模型能精确再现这种结构。\n\n# 生成三种网络对比\nN = 60\nGs = {\n    '规则环形网络\\n(只能认识邻居)': nx.watts_strogatz_graph(N, 6, 0.0, seed=42),\n    '小世界网络\\n(极少量人随机结识远方朋友)': nx.watts_strogatz_graph(N, 6, 0.1, seed=42),\n    '完全随机网络\\n(全屏乱点谱)':  nx.watts_strogatz_graph(N, 6, 1.0, seed=42),\n}\n\nfig, axes = plt.subplots(1, 3, figsize=(13, 5))\nfig.patch.set_facecolor('#0d1117')\ncolors = ['#58a6ff', '#3fb950', '#ff6b6b']\n\nfor ax, (name, G), color in zip(axes, Gs.items(), colors):\n    ax.set_facecolor('#0d1117')\n    pos = nx.circular_layout(G)\n\n    # 计算网络指标\n    C = nx.average_clustering(G)\n    L = nx.average_shortest_path_length(G)\n\n    # 用度数映射节点大小\n    degrees = dict(G.degree())\n    node_sizes = [degrees[n] * 8 + 20 for n in G.nodes()]\n\n    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.15, edge_color='#444', width=0.5)\n    nx.draw_networkx_nodes(G, pos, ax=ax, node_size=node_sizes, node_color=color, alpha=0.85)\n    ax.set_title(name, color='white', fontsize=10, pad=10)\n    ax.text(0.5, -0.05, f'聚集度 C = {C:.3f}\\n相隔度 L = {L:.2f}', \n            transform=ax.transAxes, ha='center', color='#aaa', fontsize=9)\n    ax.axis('off')\n\nplt.tight_layout()\nplt.show()\n\nprint("🤯 小世界网络（中图）的奇妙之处：")\nprint("仅仅有 10% 的人结交了远方的朋友，就能让整个社交圈的平均相隔人数从极高骤降到极低！")\n`
+    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\n# 「六度分隔」假说：世界上任意两人之间，最多通过6个中间人就能相连。\n# Watts-Strogatz 小世界模型能精确再现这种结构。\n\n# 生成三种网络对比\nN = 60\nGs = {\n    '规则环形网络\\n(只能认识邻居)': nx.watts_strogatz_graph(N, 6, 0.0, seed=42),\n    '小世界网络\\n(极少量人随机结识远方朋友)': nx.watts_strogatz_graph(N, 6, 0.1, seed=42),\n    '完全随机网络\\n(全屏乱点谱)':  nx.watts_strogatz_graph(N, 6, 1.0, seed=42),\n}\n\nfig, axes = plt.subplots(1, 3, figsize=(13, 5))\nfig.patch.set_facecolor('#0d1117')\ncolors = ['#58a6ff', '#3fb950', '#ff6b6b']\n\nfor ax, (name, G), color in zip(axes, Gs.items(), colors):\n    ax.set_facecolor('#0d1117')\n    pos = nx.circular_layout(G)\n\n    # 计算网络指标\n    C = nx.average_clustering(G)\n    L = nx.average_shortest_path_length(G)\n\n    # 用度数映射节点大小\n    degrees = dict(G.degree())\n    node_sizes =[degrees[n] * 8 + 20 for n in G.nodes()]\n\n    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.15, edge_color='#444', width=0.5)\n    nx.draw_networkx_nodes(G, pos, ax=ax, node_size=node_sizes, node_color=color, alpha=0.85)\n    ax.set_title(name, color='white', fontsize=10, pad=10)\n    ax.text(0.5, -0.05, f'聚集度 C = {C:.3f}\\n相隔度 L = {L:.2f}', \n            transform=ax.transAxes, ha='center', color='#aaa', fontsize=9)\n    ax.axis('off')\n\nplt.tight_layout()\nplt.show()\n\nprint("🤯 小世界网络（中图）的奇妙之处：")\nprint("仅仅有 10% 的人结交了远方的朋友，就能让整个社交圈的平均相隔人数从极高骤降到极低！")\n`
   },
   {
     icon: '🎵',
@@ -1860,11 +1816,9 @@ function showToast(msg) {
 
 // ── 复制工具（兼容 file:// 和浏览器环境）──
 async function smartCopy(text) {
-  // 方案1：Clipboard API（HTTPS / localhost）
   if (navigator.clipboard && navigator.clipboard.writeText) {
     try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
   }
-  // 方案2：execCommand（file:// 协议 / 旧浏览器）
   const ta = document.createElement('textarea');
   ta.value = text;
   ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
@@ -1895,10 +1849,8 @@ async function copyOutput() {
 
 function clearEditor() {
   const _edCl = document.getElementById('editor'); if (!_edCl || !_edCl.value.trim()) return;
-  // 二次确认防误触
   const btn = document.getElementById('clear-editor-btn');
   if (btn._confirmPending) {
-    // 第二次点击：真正清空
     clearTimeout(btn._confirmTimer);
     btn._confirmPending = false;
     btn.style.color = '';
@@ -1909,7 +1861,6 @@ function clearEditor() {
     saveState();
     showToast('已清空');
   } else {
-    // 第一次点击：进入确认态
     btn._confirmPending = true;
     btn.style.color = 'var(--red)';
     btn.title = '再次点击确认清空';
