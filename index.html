@@ -247,20 +247,6 @@
   .toolbar-icon-btn:hover { background: var(--surface2); color: var(--text2); }
   .toolbar-icon-btn:active { background: var(--surface3); transform: scale(0.94); }
   .toolbar-icon-btn svg { width: 13px; height: 13px; }
-  .toolbar-key-btn {
-    height: 32px; padding: 0 8px;
-    border-radius: var(--radius-xs);
-    border: 1px solid var(--border-md);
-    background: transparent;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; color: var(--text2);
-    font-family: var(--mono); font-size: 12px; font-weight: 500;
-    transition: background 0.12s, color 0.12s;
-    flex-shrink: 0;
-    letter-spacing: 0.5px;
-  }
-  .toolbar-key-btn:hover { background: var(--surface2); }
-  .toolbar-key-btn:active { background: var(--surface3); transform: scale(0.94); }
 
   /* ── Split panel ── */
   #editor-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
@@ -316,8 +302,15 @@
     line-height: inherit; display: block;
     background: none !important;
   }
-  
-  /* [修复2] 彻底隐藏 textarea 的系统自带滚动条带来的物理体积挤压错位 */
+  /* ── Word Wrap Mode ── */
+  .wrap-mode #editor,
+  .wrap-mode #highlight-pre,
+  .wrap-mode #highlight-code {
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
+  }
+
   #editor::-webkit-scrollbar { display: none; }
   #editor {
     background: transparent; border: none; outline: none;
@@ -331,7 +324,7 @@
   }
   #editor::selection { background: rgba(201,107,58,0.2); -webkit-text-fill-color: transparent; }
 
-  /*[修复1] 移除粗体(font-weight: 600)与斜体(italic)，防止因等宽字体字重导致物理尺寸变化引发严重横向错位 */
+  /* 语法配色 */
   #highlight-code .token.comment, #highlight-code .token.prolog { color: #9A9890; }
   #highlight-code .token.keyword { color: #B85A28; }
   #highlight-code .token.builtin { color: #1A5CA8; }
@@ -362,7 +355,6 @@
     #highlight-code { color: #EEEAE4; }
   }
 
-  /* [修复4] 移除 display:block 与 margin，采用纯行内圆角背景，彻底根除运行排版被挤乱的问题 */
   .editor-error-line {
     background: rgba(176, 40, 40, 0.2);
     border-radius: 3px;
@@ -432,7 +424,7 @@
   .output-placeholder-icon svg { width: 20px; height: 20px; color: var(--text3); }
   .output-placeholder p { font-size: 12px; color: var(--text3); }
 
-  /* ── Bottom sheet drawer (shared) ── */
+  /* ── Bottom sheet drawer ── */
   .sheet-overlay {
     position: fixed; inset: 0;
     background: rgba(0,0,0,0.4);
@@ -455,7 +447,7 @@
   .sheet-title { font-size: 15px; font-weight: 600; flex: 1; letter-spacing: -0.2px; }
 
   /* ── Snippets ── */
-  #snippets-drawer { max-height: 78vh; }
+  #snippets-drawer { max-height: 85vh; }
   #snippets-list { overflow-y: auto; padding: 4px 10px 16px; flex: 1; }
   .snippet-item {
     display: flex; align-items: center; gap: 12px;
@@ -478,12 +470,12 @@
   .snippet-arrow { color: var(--text3); font-size: 16px; }
 
   /* ── Settings ── */
-  #settings-drawer { max-height: 68vh; }
-  #settings-body { overflow-y: auto; padding: 4px 16px 16px; flex: 1; }
+  #settings-drawer { max-height: 85vh; }
+  #settings-body { overflow-y: auto; padding: 4px 16px 24px; flex: 1; }
   .setting-section-title {
     font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.8px; color: var(--text3);
-    padding: 12px 0 6px;
+    padding: 18px 0 6px;
   }
   .setting-row {
     display: flex; align-items: center; padding: 11px 0;
@@ -514,6 +506,22 @@
     box-shadow: 0 1px 4px rgba(0,0,0,0.25);
   }
   .toggle.on::after { transform: translateX(18px); }
+
+  /* ── Package Manager UI ── */
+  .pkg-input-group {
+    display: flex; gap: 8px; margin-top: 8px;
+  }
+  .pkg-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border-md);
+    padding: 8px 12px; border-radius: var(--radius-sm);
+    color: var(--text); font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  .pkg-btn {
+    padding: 0 14px; background: var(--accent); color: white;
+    border: none; border-radius: var(--radius-sm); font-size: 12px;
+    font-weight: 600; cursor: pointer;
+  }
+  .pkg-btn:active { transform: scale(0.96); }
 
   /* ── Toast ── */
   #toast {
@@ -627,6 +635,12 @@
     </div>
     <div class="header-spacer"></div>
     <div class="header-actions">
+      <!-- 导入文件按钮 -->
+      <div class="icon-btn" id="import-btn" onclick="triggerImport()" title="导入 .py 文件">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <input type="file" id="file-input" accept=".py" style="display:none" onchange="importFile(event)">
+      
       <div class="icon-btn" id="pwa-install-btn" onclick="installPWA()" title="安装到桌面" style="display:none;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16l-4-4h3V4h2v8h3l-4 4z"/><path d="M20 18H4v2h16v-2z"/></svg>
       </div>
@@ -652,7 +666,6 @@
   <!-- Main area -->
   <div id="main">
     <div id="editor-panel">
-      <!-- Code editor: textarea + Prism highlight overlay -->
       <div id="code-wrap">
         <div id="line-numbers"></div>
         <div id="highlight-wrap">
@@ -660,10 +673,8 @@
           <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
         </div>
       </div>
-
       <!-- Resizer -->
       <div id="resizer"></div>
-
       <!-- Output panel -->
       <div id="output-panel">
         <div id="output-header">
@@ -712,6 +723,10 @@
     <div class="toolbar-icon-btn" id="copy-code-btn" onclick="copyCode()" title="复制代码">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
     </div>
+    <!-- 导出文件按钮 -->
+    <div class="toolbar-icon-btn" onclick="downloadCode()" title="导出为 .py 文件">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+    </div>
     <div class="toolbar-icon-btn" id="clear-editor-btn" onclick="clearEditor()" title="清空编辑器">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
     </div>
@@ -748,6 +763,7 @@
       </div>
     </div>
     <div id="settings-body">
+      <div class="setting-section-title">显示设置</div>
       <div class="setting-row">
         <div class="setting-label"><p>字体大小</p><span>代码区域字体</span></div>
         <select class="setting-select" id="font-size-select" onchange="applyFontSize(this.value)">
@@ -759,6 +775,16 @@
         </select>
       </div>
       <div class="setting-row">
+        <div class="setting-label"><p>代码折行 (Word Wrap)</p><span>自动换行以适配屏幕</span></div>
+        <div class="toggle" id="word-wrap-toggle" onclick="toggleSetting('word-wrap')"></div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-label"><p>显示行号</p><span>代码行号显示</span></div>
+        <div class="toggle on" id="show-lines-toggle" onclick="toggleSetting('show-lines')"></div>
+      </div>
+
+      <div class="setting-section-title">运行设置</div>
+      <div class="setting-row">
         <div class="setting-label"><p>自动缩进</p><span>按 Enter 自动对齐</span></div>
         <div class="toggle on" id="auto-indent-toggle" onclick="toggleSetting('auto-indent')"></div>
       </div>
@@ -766,9 +792,14 @@
         <div class="setting-label"><p>清空上次输出</p><span>每次运行前清空</span></div>
         <div class="toggle on" id="clear-before-run-toggle" onclick="toggleSetting('clear-before-run')"></div>
       </div>
-      <div class="setting-row">
-        <div class="setting-label"><p>显示行号</p><span>代码行号显示</span></div>
-        <div class="toggle on" id="show-lines-toggle" onclick="toggleSetting('show-lines')"></div>
+
+      <div class="setting-section-title">包管理器 (PyPI)</div>
+      <div class="setting-row" style="flex-direction:column; align-items:flex-start;">
+        <div class="setting-label"><p>安装第三方库</p><span>输入包名从 PyPI 安装 (例如 requests)</span></div>
+        <div class="pkg-input-group">
+          <input type="text" id="pkg-input" class="pkg-input" placeholder="包名...">
+          <button class="pkg-btn" id="pkg-install-btn" onclick="installPackageManual()">安装</button>
+        </div>
       </div>
     </div>
   </div>
@@ -793,11 +824,18 @@ let pyodide = null;
 let activeTab = 0;
 let isRunning = false;
 let inputResolve = null;
-const _defSettings = { autoIndent: true, clearBeforeRun: true, showLines: true, fontSize: 13 };
+const _defSettings = { 
+  autoIndent: true, 
+  clearBeforeRun: true, 
+  showLines: true, 
+  fontSize: 13,
+  wordWrap: false 
+};
 let settings = (() => {
   try { return Object.assign({}, _defSettings, JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')); }
   catch(_) { return { ..._defSettings }; }
 })();
+
 function saveSettings() {
   try { localStorage.setItem('pyrunner_settings', JSON.stringify(settings)); } catch(_) {}
 }
@@ -855,7 +893,7 @@ async function initPyodide() {
       { label: '加载数据分析库 (pandas, statsmodels)...', pkgs:['pandas', 'statsmodels'], pct: 55 },
       { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'], pct: 65 },
       { label: '加载机器学习库 (sklearn, sympy)...', pkgs:['scikit-learn', 'sympy'], pct: 75 },
-      { label: '加载网络架构库 (networkx)...', pkgs: ['networkx', 'pyodide-http'], pct: 80 },
+      { label: '加载网络架构库 (networkx)...', pkgs:['networkx', 'pyodide-http'], pct: 80 },
     ];
     for (const g of pkgGroups) {
       setLoadMsg(g.label, g.pct);
@@ -1337,7 +1375,7 @@ mpl.rcParams['axes.unicode_minus'] = False
   isRunning = false;
   _stopRequested = false;
   setRunBtn(false);
-  syncScroll(); // 确保重绘后滚动条重新对齐
+  syncScroll();
 }
 
 // ── Output helpers ──
@@ -1396,7 +1434,6 @@ function scrollOutput() {
   });
 }
 
-// ── Status ──
 function setStatus(kind, text) {
   const pill = document.getElementById('status');
   const dot = pill.querySelector('.status-dot');
@@ -1406,10 +1443,8 @@ function setStatus(kind, text) {
   dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
 }
 
-// ── 初始代码 ──
 const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
 
-// ── 语法高亮（Prism.js）──
 let _highlightRaf = null;
 function highlightCode() {
   if (_highlightRaf) return;
@@ -1424,28 +1459,24 @@ function highlightCode() {
     if (typeof Prism !== 'undefined') {
       html = Prism.highlight(raw, Prism.languages.python, 'python');
     } else {
-      // Prism未加载时的转义回退
       html = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
     
-    // [修复3] 防止浏览器吃掉末尾换行引发垂直错位，附加零宽空格撑起最后一行
-    if (raw.endsWith('\n')) {
-      html += '&#8203;';
-    }
+    if (raw.endsWith('\n')) html += '&#8203;';
     code.innerHTML = html;
 
-    // 同步 pre 的滚动位置
     const pre = document.getElementById('highlight-pre');
     if (pre) { pre.scrollTop = ed.scrollTop; pre.scrollLeft = ed.scrollLeft; }
     updateLineNumbers();
   });
 }
 
-// ── 行号 ──
 function updateLineNumbers() {
   const ed = document.getElementById('editor');
   const ln = document.getElementById('line-numbers');
   if (!ed || !ln) return;
+  
+  // 如果开启了 WordWrap，行号同步会变得复杂，简单起见在 Wrap 模式下仅显示原始物理行
   const lineCount = (ed.value.match(/\n/g) ||[]).length + 1;
   if (ln._lastCount === lineCount) return;
   ln._lastCount = lineCount;
@@ -1455,7 +1486,6 @@ function updateLineNumbers() {
   ln.scrollTop = ed.scrollTop;
 }
 
-// ── 同步滚动 ──
 function syncScroll() {
   const ed  = document.getElementById('editor');
   const pre = document.getElementById('highlight-pre');
@@ -1466,10 +1496,8 @@ function syncScroll() {
   if (ln) ln.scrollTop = ed.scrollTop;
 }
 
-// [防御] 避免窗口缩放或输入法拉起时打破同步
 window.addEventListener('resize', syncScroll);
 
-// ── 错误行高亮 ──
 let _errLineNo = 0;
 function highlightErrorLine(lineNo) {
   clearErrorHighlight();
@@ -1487,12 +1515,9 @@ function _renderErrorHighlight() {
     lines[_errLineNo - 1] = '<span class="editor-error-line">' + (lines[_errLineNo - 1] || '\u00a0') + '</span>';
   }
   let finalHtml = lines.join('\n');
-  
-  // [修复3] 同样为错误高亮逻辑保持末尾换行保护
   if (raw.endsWith('\n')) finalHtml += '&#8203;';
   code.innerHTML = finalHtml;
   
-  // 滚动到出错行
   const lineH = parseFloat(getComputedStyle(ed).lineHeight) || 22;
   ed.scrollTop = Math.max(0, (_errLineNo - 4) * lineH);
   syncScroll();
@@ -1502,7 +1527,6 @@ function clearErrorHighlight() {
   highlightCode(); 
 }
 
-// ── Editor helpers ──
 function insertText(text) {
   const ed = document.getElementById('editor');
   if (!ed) return;
@@ -1524,31 +1548,25 @@ function undoCode() {
   highlightCode();
 }
 
-// ── 初始化编辑器 ──
 function initEditor(code) {
   const ed = document.getElementById('editor');
   if (!ed) return;
   ed.value = code || _INITIAL_CODE;
 
-  // input: 高亮 + 同步 tabs
   ed.addEventListener('input', () => {
     if (tabs[activeTab]) tabs[activeTab].code = ed.value;
     highlightCode();
   });
 
-  // scroll: 同步 pre + 行号
   ed.addEventListener('scroll', syncScroll);
 
-  // keydown 处理
   ed.addEventListener('keydown', (e) => {
     const s = e.target.selectionStart, end = e.target.selectionEnd;
 
-    // Ctrl/Cmd+Enter → 运行
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault(); toggleRun(); return;
     }
 
-    // Tab / Shift+Tab
     if (e.key === 'Tab') {
       e.preventDefault();
       if (e.shiftKey) {
@@ -1567,7 +1585,6 @@ function initEditor(code) {
       highlightCode(); return;
     }
 
-    // 括号 / 引号自动补全
     const pairs = {'(':')', '[':']', '{':'}', '"':'"', "'":"'"};
     if (pairs[e.key] && s === end) {
       e.preventDefault();
@@ -1576,11 +1593,9 @@ function initEditor(code) {
       if(tabs[activeTab]) tabs[activeTab].code = ed.value;
       highlightCode(); return;
     }
-    // 右括号跳过
     if ([")", "]", "}"].includes(e.key) && ed.value[s] === e.key) {
       e.preventDefault(); ed.setSelectionRange(s+1, s+1); return;
     }
-    // Backspace 删除成对
     if (e.key === 'Backspace' && s === end && s > 0) {
       const open = ed.value[s-1], close = ed.value[s];
       if (pairs[open] === close) {
@@ -1591,7 +1606,6 @@ function initEditor(code) {
         highlightCode(); return;
       }
     }
-    // Enter → 自动缩进
     if (e.key === 'Enter' && settings.autoIndent) {
       const lines = ed.value.substring(0,s).split('\n');
       const last = lines[lines.length-1];
@@ -1605,8 +1619,6 @@ function initEditor(code) {
       highlightCode(); return;
     }
   });
-
-  // 首次渲染
   highlightCode();
 }
 
@@ -1623,9 +1635,12 @@ function startRenameTab(idx, div) {
   inp.onblur = commit;
   inp.onkeydown = (e) => { if(e.key==='Enter'){e.preventDefault();inp.blur();} if(e.key==='Escape'){inp.value=old;inp.blur();} };
 }
-function addTab() {
+function addTab(name, code) {
   tabCounter++;
-  tabs.push({ name: 'script' + tabCounter + '.py', code: '# 新文件\nprint("Hello, World!")\n' });
+  tabs.push({ 
+    name: name || 'script' + tabCounter + '.py', 
+    code: code || '# 新文件\nprint("Hello, World!")\n' 
+  });
   switchTab(tabs.length - 1);
   renderTabs();
 }
@@ -1661,10 +1676,10 @@ function renderTabs() {
   const add = document.createElement('div');
   add.className = 'tab-add';
   add.textContent = '+';
-  add.onclick = addTab;
+  add.onclick = () => addTab();
   bar.appendChild(add);
 }
-document.getElementById('add-tab-btn').onclick = addTab;
+document.getElementById('add-tab-btn').onclick = () => addTab();
 
 // ── Resizer ──
 let resizing = false, startY = 0, startH = 0;
@@ -1680,7 +1695,7 @@ window.addEventListener('pointermove', (e) => {
   const delta = startY - e.clientY;
   const newH = Math.max(80, Math.min(window.innerHeight * 0.7, startH + delta));
   outputPanel.style.height = newH + 'px';
-  syncScroll(); // 确保拖拽改变尺寸后重新对齐
+  syncScroll();
 });
 window.addEventListener('pointerup', () => { resizing = false; resizer.classList.remove('dragging'); });
 
@@ -1705,6 +1720,66 @@ const SNIPPETS =[
     code: `import numpy as np\nimport matplotlib.pyplot as plt\n\n# 经典数学之美：蝴蝶曲线 (Butterfly Curve)\n# 发现者：Temple H. Fay (1989)\n\nt = np.linspace(0, 12 * np.pi, 2000)\nx = np.sin(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\ny = np.cos(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\n\nplt.figure(figsize=(6, 6))\nplt.plot(x, y, color='#9C6A10', linewidth=1.2, alpha=0.9)\nplt.title('数学之美：蝴蝶曲线', fontsize=14, pad=15)\nplt.axis('off')\nplt.show()\n`
   },
   {
+    icon: '🤖',
+    name: 'K-Means 聚类',
+    desc: 'Scikit-learn 机器学习无监督分类',
+    code: `import matplotlib.pyplot as plt\nfrom sklearn.datasets import make_blobs\nfrom sklearn.cluster import KMeans\n\nprint("正在生成随机聚类数据...")\n# 生成 300 个样本，分布在 4 个中心点附近\nX, y_true = make_blobs(n_samples=300, centers=4, cluster_std=0.60, random_state=0)\n\nprint("🤖 正在使用 K-Means 算法进行无监督学习聚类...")\nkmeans = KMeans(n_clusters=4, n_init='auto', random_state=42)\nkmeans.fit(X)\ny_kmeans = kmeans.predict(X)\n\n# 绘制散点图\nplt.figure(figsize=(8, 6))\nplt.scatter(X[:, 0], X[:, 1], c=y_kmeans, s=30, cmap='viridis', alpha=0.7, edgecolor='k')\n\n# 标注聚类中心点\ncenters = kmeans.cluster_centers_\nplt.scatter(centers[:, 0], centers[:, 1], c='red', s=200, alpha=0.9, marker='X', label='Centroids')\n\nplt.title("Scikit-Learn: K-Means Clustering", fontsize=14, pad=15)\nplt.legend()\nplt.grid(True, alpha=0.3)\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '📈',
+    name: '金融时间序列',
+    desc: 'Pandas 数据处理与动态折线图',
+    code: `import pandas as pd\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在使用 Pandas 生成模拟金融时间序列数据...")\n\n# 生成100天的日期索引\ndates = pd.date_range('20250101', periods=100)\n# 生成4只随机股票的波动数据并累加计算累计收益\ndf = pd.DataFrame(np.random.randn(100, 4), index=dates, columns=['Apple', 'Google', 'Microsoft', 'Tesla'])\ndf = df.cumsum()\n\n# 绘制 DataFrame\nax = df.plot(figsize=(10, 5), linewidth=2, colormap='tab10')\nplt.title("Pandas 模拟股票走势分析", fontsize=14, pad=15)\nplt.xlabel("Date")\nplt.ylabel("Cumulative Returns")\nplt.grid(True, alpha=0.3)\nplt.legend(loc='upper left')\nplt.tight_layout()\nplt.show()\n\nprint("\\n尾部数据预览 (df.tail()):")\ndf.tail()\n`
+  },
+  {
+    icon: '☀️',
+    name: 'Plotly 交互旭日图',
+    desc: '层级数据结构的可视化利器',
+    code: `import plotly.express as px\n\nprint("正在渲染 Plotly 旭日图...")\nprint("💡 提示：这是一个高度交互的图表，你可以点击各个扇区放大查看细节！")\n\ndata = dict(\n    character=["Eve", "Cain", "Seth", "Enos", "Noam", "Abel", "Awan", "Enoch", "Azura"],\n    parent=["", "Eve", "Eve", "Seth", "Seth", "Eve", "Eve", "Awan", "Eve"],\n    value=[10, 14, 12, 10, 2, 6, 6, 4, 4]\n)\n\nfig = px.sunburst(\n    data,\n    names='character',\n    parents='parent',\n    values='value',\n    color='value',\n    color_continuous_scale='RdBu'\n)\n\nfig.update_layout(\n    title="Plotly 旭日图 (可点击扇区交互)", \n    margin=dict(t=40, l=0, r=0, b=0),\n    height=450\n)\nfig\n`
+  },
+  {
+    icon: '🔥',
+    name: '相关性热力图',
+    desc: 'Seaborn 高级统计图表生成',
+    code: `import seaborn as sns\nimport matplotlib.pyplot as plt\nimport pandas as pd\nimport numpy as np\n\nprint("正在生成相关性热力图...")\n\n# 生成一组模拟的随机相关系数矩阵\nnp.random.seed(42)\ndata = pd.DataFrame(np.random.randn(10, 10), columns=[f'F{i}' for i in range(1, 11)])\ncorr = data.corr()\n\nplt.figure(figsize=(8, 6))\n# 绘制热力图\nsns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", cbar=True, square=True)\n\nplt.title("Seaborn Correlation Heatmap", fontsize=14, pad=15)\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🧬',
+    name: '生命游戏 (动画)',
+    desc: 'Conway 从简单规则涌现复杂性',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\nimport matplotlib.animation as animation\n\nprint("正在初始化 Conway 的生命游戏动画...")\nprint("生命游戏规则极其简单：")\nprint("1. 活细胞邻居 < 2 → 死亡（孤独）")\nprint("2. 活细胞邻居 2~3 → 存活")\nprint("3. 活细胞邻居 > 3 → 死亡（过密）")\nprint("4. 死细胞邻居 = 3 → 复活（繁殖）\\n")\n\nN = 60\n\ndef step(grid):\n    # 用卷积快速计算每个细胞的存活邻居数\n    neighbors = sum(\n        np.roll(np.roll(grid, i, 0), j, 1)\n        for i in (-1, 0, 1) for j in (-1, 0, 1)\n        if (i != 0 or j != 0)\n    )\n    return ((neighbors == 3) | (grid & (neighbors == 2))).astype(int)\n\n# 初始化：纯净网格\ngrid = np.zeros((N, N), dtype=int)\n\n# 植入经典的 Gosper 滑翔机炮\nglider_gun =[\n    (5,1),(5,2),(6,1),(6,2),\n    (5,11),(6,11),(7,11),(4,12),(8,12),(3,13),(9,13),(3,14),(9,14),\n    (6,15),(4,16),(8,16),(5,17),(6,17),(7,17),(6,18),\n    (3,21),(4,21),(5,21),(3,22),(4,22),(5,22),(2,23),(6,23),\n    (1,25),(2,25),(6,25),(7,25),\n    (3,35),(4,35),(3,36),(4,36),\n]\nfor r, c in glider_gun:\n    if r < N and c < N:\n        grid[r, c] = 1\n\nfig, ax = plt.subplots(figsize=(6, 6))\nimg = ax.imshow(grid, cmap='Greens', vmin=0, vmax=1, interpolation='nearest')\nax.set_title("Gosper 滑翔机炮 (Gosper Glider Gun)", fontsize=13, pad=15)\nax.axis('off')\n\nstate = {'grid': grid}\n\ndef update(frame):\n    state['grid'] = step(state['grid'])\n    img.set_data(state['grid'])\n    return [img]\n\n# 渲染前 120 帧\nani = animation.FuncAnimation(fig, update, frames=120, interval=60, blit=True)\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🌐',
+    name: '异步 API 抓取',
+    desc: '利用 Fetch 获取外网实时 JSON 数据',
+    code: `import asyncio\nfrom pyodide.http import pyfetch\nimport json\n\nasync def get_space_news():\n    print("🚀 正在通过 Pyodide Fetch 请求宇宙新闻 API...")\n    try:\n        # 免费的太空新闻 API\n        response = await pyfetch("https://api.spaceflightnewsapi.net/v4/articles/?limit=3")\n        data = await response.json()\n        \n        print("\\n📰 【最新太空新闻】\\n" + "="*40)\n        for i, article in enumerate(data['results'], 1):\n            print(f"{i}. {article['title']}")\n            print(f"   来源: {article['news_site']}")\n            print(f"   发布时间: {article['published_at'][:10]}")\n            print("-" * 40)\n    except Exception as e:\n        print(f"请求失败，请检查网络环境。错误信息: {e}")\n\n# 在 Pyodide 环境中直接通过 asyncio.ensure_future 运行\nasyncio.ensure_future(get_space_news())\n`
+  },
+  {
+    icon: '💖',
+    name: '3D 数学心形',
+    desc: 'Matplotlib 3D 曲面与参数方程',
+    code: `import matplotlib.pyplot as plt\nimport numpy as np\n\nprint("正在利用参数方程绘制 3D 心形曲面...")\n\nfig = plt.figure(figsize=(8, 8))\nax = fig.add_subplot(111, projection='3d')\n\n# 构造参数网络\nu = np.linspace(0, 2 * np.pi, 100)\nv = np.linspace(0, np.pi, 100)\nu, v = np.meshgrid(u, v)\n\n# 3D 心的参数方程\nx = 16 * (np.sin(u)**3) * np.sin(v)\ny = (13 * np.cos(u) - 5 * np.cos(2*u) - 2 * np.cos(3*u) - np.cos(4*u)) * np.sin(v)\nz = 10 * np.cos(v)\n\n# 绘制曲面\nax.plot_surface(x, y, z, color='crimson', edgecolor='none', alpha=0.9)\nax.set_title("3D Mathematics Heart", fontsize=15)\nax.axis('off')\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🕸️',
+    name: 'PageRank 算法',
+    desc: 'NetworkX 生成无标度网络并计算节点权重',
+    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\nprint("正在生成 Barabási–Albert 无标度网络 (Scale-Free Network)...")\n# 生成 60 个节点的无标度网络（模拟现实世界如互联网的链接方式）\nG = nx.barabasi_albert_graph(60, 2, seed=42)\n\nprint("正在计算所有节点的 PageRank 值...")\npr = nx.pagerank(G, alpha=0.85)\n\nplt.figure(figsize=(8, 8))\n# 使用 spring 布局对节点进行排版\npos = nx.spring_layout(G, seed=42)\n\n# 将 PageRank 值放大用作节点的显示大小\nnode_sizes =[v * 15000 for v in pr.values()]\n\nnx.draw_networkx(\n    G, pos, \n    node_size=node_sizes, \n    node_color=list(pr.values()), \n    cmap=plt.cm.Blues, \n    with_labels=False, \n    alpha=0.8, \n    edge_color="#cccccc"\n)\n\nplt.title("PageRank on Scale-Free Network", fontsize=14)\nplt.axis('off')\nplt.tight_layout()\nplt.show()\n\nprint("图中节点越大、颜色越深，代表其 PageRank 权重越高，即在网络中处于越核心的位置。")\n`
+  },
+  {
+    icon: '📐',
+    name: '谢尔宾斯基分形',
+    desc: '利用混沌游戏算法急速生成分形三角形',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\n\n# 混沌游戏 (Chaos Game) 算法：\n# 1. 取一个三角形的三个顶点\n# 2. 随机在内部选一个起始点 P\n# 3. 随机选一个顶点，将 P 移动到 P 与该顶点连线的中点，并打点\n# 4. 重复上万次，结果居然会呈现出高度对称的分形图形！\n\nprint("正在进行混沌游戏随机打点 (15000次)...")\nn = 15000\n\n# 定义三个顶点\nvertices = np.array([[0, 0],[1, 0], [0.5, np.sqrt(3)/2]])\n\np = np.array([0.5, 0.5])\npoints = np.zeros((n, 2))\n\nfor i in range(n):\n    v = vertices[np.random.randint(3)]\n    p = (p + v) / 2\n    points[i] = p\n\nplt.figure(figsize=(7, 7))\n# 丢弃最开始的 10 个点以消除初始误差，绘制散点\nplt.scatter(points[10:,0], points[10:,1], s=0.2, color='#2A7A4A')\nplt.title("Sierpinski Triangle (Chaos Game)", fontsize=14, pad=15)\nplt.axis('off')\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🌿',
+    name: '逻辑斯谛分岔图',
+    desc: '探索种群繁衍背后的混沌理论',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在计算 Logistic Map (逻辑斯谛映射) 分岔过程...")\nprint("方程: X_next = R * X * (1 - X)")\n\n# R 是繁殖率参数\nn = 10000\nR = np.linspace(2.5, 4.0, n)\n\niterations = 1000\nlast = 100  # 我们只保留最后100次迭代的结果以观察其稳定态\nx = 1e-5 * np.ones(n)\n\nplt.figure(figsize=(10, 6))\n\nfor i in range(iterations):\n    x = R * x * (1 - x)\n    # 当迭代进入尾声时开始记录绘制\n    if i >= (iterations - last):\n        plt.plot(R, x, ',k', alpha=0.03)\n\nplt.title("Bifurcation Diagram of the Logistic Map", fontsize=14)\nplt.xlabel("Growth Rate (R)", fontsize=11)\nplt.ylabel("Population (X)", fontsize=11)\nplt.grid(True, alpha=0.2)\nplt.tight_layout()\nplt.show()\n\nprint("💡 看点：随着参数 R 增大，种群数量最终从稳定在一个值，分岔为在两个值之间震荡，最终走向完全的混沌状态。")\n`
+  },
+  {
     icon: '🌌',
     name: 'Plotly 3D 曲面',
     desc: '可随意拖拽旋转的 3D 互动图表',
@@ -1714,7 +1789,7 @@ const SNIPPETS =[
     icon: '🌀',
     name: '洛伦兹吸引子',
     desc: '混沌理论：蝴蝶效应的震撼呈现',
-    code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.integrate import solve_ivp\n\n# 洛伦兹方程：描述大气对流的混沌系统\n# 任何微小初始扰动都会导致完全不同的轨迹\ndef lorenz(t, s, sigma=10, beta=8/3, rho=28):\n    x, y, z = s\n    return[sigma * (y - x), x * (rho - z) - y, x * y - beta * z]\n\n# 两条初始条件仅相差 1e-8 的轨迹，演示蝴蝶效应\nresults = []\nfor eps in[0.0, 1e-8]:\n    sol = solve_ivp(\n        lorenz, (0, 40), [1.0 + eps, 1.0, 1.0],\n        t_eval=np.linspace(0, 40, 8000), rtol=1e-9\n    )\n    results.append(sol)\n\nfig = plt.figure(figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\n\n# 左图：吸引子全貌\nax1 = fig.add_subplot(121, projection='3d')\nax1.set_facecolor('#0d1117')\nx, y, z = results[0].y\nax1.scatter(x, y, z, c=results[0].t, cmap='plasma', s=0.3, alpha=0.6)\nax1.set_title('洛伦兹吸引子', color='white', fontsize=11)\nfor spine in[ax1.xaxis, ax1.yaxis, ax1.zaxis]: spine.pane.fill = False\nax1.tick_params(colors='#555')\n\n# 右图：蝴蝶效应——两条轨迹随时间的偏离\nax2 = fig.add_subplot(122)\nax2.set_facecolor('#0d1117')\nt = results[0].t\ndist = np.linalg.norm(results[0].y - results[1].y, axis=0)\nax2.semilogy(t, dist + 1e-15, color='#ff6b6b', linewidth=1)\nax2.set_title('蝴蝶效应：初始差 1e-8 的两轨迹偏离距离', color='white', fontsize=9)\nax2.set_xlabel('时间', color='#888')\nax2.set_ylabel('轨迹间距 (对数轴)', color='#888')\nax2.tick_params(colors='#666')\nfor s in ax2.spines.values(): s.set_edgecolor('#333')\nax2.grid(True, alpha=0.15)\n\nplt.tight_layout()\nplt.show()\n\nprint("左图：同一吸引子被无数轨迹填满，却从不重复——这就是确定性混沌。")\nprint("右图：两条几乎相同的起点，约20个时间单位后轨迹完全发散。")\n`
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.integrate import solve_ivp\n\n# 洛伦兹方程：描述大气对流的混沌系统\n# 任何微小初始扰动都会导致完全不同的轨迹\ndef lorenz(t, s, sigma=10, beta=8/3, rho=28):\n    x, y, z = s\n    return[sigma * (y - x), x * (rho - z) - y, x * y - beta * z]\n\n# 两条初始条件仅相差 1e-8 的轨迹，演示蝴蝶效应\nresults =[]\nfor eps in[0.0, 1e-8]:\n    sol = solve_ivp(\n        lorenz, (0, 40),[1.0 + eps, 1.0, 1.0],\n        t_eval=np.linspace(0, 40, 8000), rtol=1e-9\n    )\n    results.append(sol)\n\nfig = plt.figure(figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\n\n# 左图：吸引子全貌\nax1 = fig.add_subplot(121, projection='3d')\nax1.set_facecolor('#0d1117')\nx, y, z = results[0].y\nax1.scatter(x, y, z, c=results[0].t, cmap='plasma', s=0.3, alpha=0.6)\nax1.set_title('洛伦兹吸引子', color='white', fontsize=11)\nfor spine in[ax1.xaxis, ax1.yaxis, ax1.zaxis]: spine.pane.fill = False\nax1.tick_params(colors='#555')\n\n# 右图：蝴蝶效应——两条轨迹随时间的偏离\nax2 = fig.add_subplot(122)\nax2.set_facecolor('#0d1117')\nt = results[0].t\ndist = np.linalg.norm(results[0].y - results[1].y, axis=0)\nax2.semilogy(t, dist + 1e-15, color='#ff6b6b', linewidth=1)\nax2.set_title('蝴蝶效应：初始差 1e-8 的两轨迹偏离距离', color='white', fontsize=9)\nax2.set_xlabel('时间', color='#888')\nax2.set_ylabel('轨迹间距 (对数轴)', color='#888')\nax2.tick_params(colors='#666')\nfor s in ax2.spines.values(): s.set_edgecolor('#333')\nax2.grid(True, alpha=0.15)\n\nplt.tight_layout()\nplt.show()\n\nprint("左图：同一吸引子被无数轨迹填满，却从不重复——这就是确定性混沌。")\nprint("右图：两条几乎相同的起点，约20个时间单位后轨迹完全发散。")\n`
   },
   {
     icon: '🧬',
@@ -1732,7 +1807,7 @@ const SNIPPETS =[
     icon: '🕸️',
     name: '小世界网络',
     desc: '六度分隔理论：NetworkX 图论建模',
-    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\n# 「六度分隔」假说：世界上任意两人之间，最多通过6个中间人就能相连。\n# Watts-Strogatz 小世界模型能精确再现这种结构。\n\n# 生成三种网络对比\nN = 60\nGs = {\n    '规则环形网络\\n(只能认识邻居)': nx.watts_strogatz_graph(N, 6, 0.0, seed=42),\n    '小世界网络\\n(极少量人随机结识远方朋友)': nx.watts_strogatz_graph(N, 6, 0.1, seed=42),\n    '完全随机网络\\n(全屏乱点谱)':  nx.watts_strogatz_graph(N, 6, 1.0, seed=42),\n}\n\nfig, axes = plt.subplots(1, 3, figsize=(13, 5))\nfig.patch.set_facecolor('#0d1117')\ncolors = ['#58a6ff', '#3fb950', '#ff6b6b']\n\nfor ax, (name, G), color in zip(axes, Gs.items(), colors):\n    ax.set_facecolor('#0d1117')\n    pos = nx.circular_layout(G)\n\n    # 计算网络指标\n    C = nx.average_clustering(G)\n    L = nx.average_shortest_path_length(G)\n\n    # 用度数映射节点大小\n    degrees = dict(G.degree())\n    node_sizes =[degrees[n] * 8 + 20 for n in G.nodes()]\n\n    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.15, edge_color='#444', width=0.5)\n    nx.draw_networkx_nodes(G, pos, ax=ax, node_size=node_sizes, node_color=color, alpha=0.85)\n    ax.set_title(name, color='white', fontsize=10, pad=10)\n    ax.text(0.5, -0.05, f'聚集度 C = {C:.3f}\\n相隔度 L = {L:.2f}', \n            transform=ax.transAxes, ha='center', color='#aaa', fontsize=9)\n    ax.axis('off')\n\nplt.tight_layout()\nplt.show()\n\nprint("🤯 小世界网络（中图）的奇妙之处：")\nprint("仅仅有 10% 的人结交了远方的朋友，就能让整个社交圈的平均相隔人数从极高骤降到极低！")\n`
+    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\n# 「六度分隔」假说：世界上任意两人之间，最多通过6个中间人就能相连。\n# Watts-Strogatz 小世界模型能精确再现这种结构。\n\n# 生成三种网络对比\nN = 60\nGs = {\n    '规则环形网络\\n(只能认识邻居)': nx.watts_strogatz_graph(N, 6, 0.0, seed=42),\n    '小世界网络\\n(极少量人随机结识远方朋友)': nx.watts_strogatz_graph(N, 6, 0.1, seed=42),\n    '完全随机网络\\n(全屏乱点谱)':  nx.watts_strogatz_graph(N, 6, 1.0, seed=42),\n}\n\nfig, axes = plt.subplots(1, 3, figsize=(13, 5))\nfig.patch.set_facecolor('#0d1117')\ncolors =['#58a6ff', '#3fb950', '#ff6b6b']\n\nfor ax, (name, G), color in zip(axes, Gs.items(), colors):\n    ax.set_facecolor('#0d1117')\n    pos = nx.circular_layout(G)\n\n    # 计算网络指标\n    C = nx.average_clustering(G)\n    L = nx.average_shortest_path_length(G)\n\n    # 用度数映射节点大小\n    degrees = dict(G.degree())\n    node_sizes =[degrees[n] * 8 + 20 for n in G.nodes()]\n\n    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.15, edge_color='#444', width=0.5)\n    nx.draw_networkx_nodes(G, pos, ax=ax, node_size=node_sizes, node_color=color, alpha=0.85)\n    ax.set_title(name, color='white', fontsize=10, pad=10)\n    ax.text(0.5, -0.05, f'聚集度 C = {C:.3f}\\n相隔度 L = {L:.2f}', \n            transform=ax.transAxes, ha='center', color='#aaa', fontsize=9)\n    ax.axis('off')\n\nplt.tight_layout()\nplt.show()\n\nprint("🤯 小世界网络（中图）的奇妙之处：")\nprint("仅仅有 10% 的人结交了远方的朋友，就能让整个社交圈的平均相隔人数从极高骤降到极低！")\n`
   },
   {
     icon: '🎵',
@@ -1792,16 +1867,92 @@ function applyFontSize(v) {
   const hc = document.getElementById('highlight-code');[ed, pre, ln, hc].forEach(el => { if(el) el.style.fontSize = sz + 'px'; });
   settings.fontSize = sz; saveSettings();
 }
+
+function applyWordWrap(enabled) {
+  const wrapEl = document.getElementById('code-wrap');
+  if (enabled) wrapEl.classList.add('wrap-mode');
+  else wrapEl.classList.remove('wrap-mode');
+  syncScroll();
+}
+
 function toggleSetting(key) {
-  const map = { 'auto-indent': 'autoIndent', 'clear-before-run': 'clearBeforeRun', 'show-lines': 'showLines' };
+  const map = { 
+    'auto-indent': 'autoIndent', 
+    'clear-before-run': 'clearBeforeRun', 
+    'show-lines': 'showLines',
+    'word-wrap': 'wordWrap'
+  };
   const k = map[key];
   settings[k] = !settings[k];
   saveSettings();
+  
   document.getElementById(key + '-toggle').classList.toggle('on', settings[k]);
+  
   if (key === 'show-lines') {
     const _ln = document.getElementById('line-numbers');
     if (_ln) _ln.style.display = settings.showLines ? '' : 'none';
   }
+  if (key === 'word-wrap') {
+    applyWordWrap(settings.wordWrap);
+  }
+}
+
+// ── 可视化包管理器 ──
+async function installPackageManual() {
+  const input = document.getElementById('pkg-input');
+  const btn = document.getElementById('pkg-install-btn');
+  const pkgName = input.value.trim();
+  
+  if (!pkgName) { showToast('请输入包名'); return; }
+  if (!pyodide) { showToast('Python 尚未就绪'); return; }
+
+  input.disabled = true;
+  btn.textContent = '安装中...';
+  btn.style.opacity = '0.6';
+
+  appendOutput(`\n📦 正在手动安装包: ${pkgName}...\n`, 'info');
+
+  try {
+    // 优先尝试 loadPackage (如果是 Pyodide 官方库)
+    try {
+      await pyodide.loadPackage(pkgName);
+      appendOutput(`✓ ${pkgName} 已通过官方库成功安装\n`, 'success');
+    } catch (_) {
+      // 失败则尝试 micropip (从 PyPI)
+      await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkgName}')`);
+      appendOutput(`✓ ${pkgName} 已从 PyPI 成功安装\n`, 'success');
+    }
+    showToast(`✓ 安装成功: ${pkgName}`);
+    input.value = '';
+  } catch (err) {
+    appendOutput(`✗ 安装失败: ${err.message}\n`, 'stderr');
+    showToast('安装失败，请检查包名或网络');
+  } finally {
+    input.disabled = false;
+    btn.textContent = '安装';
+    btn.style.opacity = '1';
+  }
+}
+
+// ── 本地文件导入 ──
+function triggerImport() {
+  document.getElementById('file-input').click();
+}
+
+function importFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const code = ev.target.result;
+    const name = file.name || 'imported.py';
+    addTab(name, code);
+    showToast(`✓ 已导入文件: ${name}`);
+    // 重置 input 以便下次导入相同文件
+    e.target.value = '';
+  };
+  reader.readAsText(file);
 }
 
 // ── Toast ──
@@ -1814,7 +1965,7 @@ function showToast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
 }
 
-// ── 复制工具（兼容 file:// 和浏览器环境）──
+// ── 复制工具 ──
 async function smartCopy(text) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
@@ -1881,15 +2032,44 @@ async function copyCode() {
   else showToast('复制失败，请手动选择文本');
 }
 
-// ── 应用已保存的设置 ──
+function downloadCode() {
+  const code = (document.getElementById('editor') || {}).value || '';
+  if (!code.trim()) { 
+    showToast('代码为空，无法导出'); 
+    return; 
+  }
+  let filename = tabs[activeTab].name || 'script.py';
+  if (!filename.endsWith('.py')) {
+    filename += '.py';
+  }
+  const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`✅ 已导出: ${filename}`);
+}
+
+// ── 应用设置 ──
 (function() {
   applyFontSize(settings.fontSize || 13);
   document.getElementById('font-size-select').value = settings.fontSize || 13;
+  
   if (!settings.showLines) {
     const _ln2 = document.getElementById('line-numbers');
     if(_ln2) _ln2.style.display = 'none';
     document.getElementById('show-lines-toggle').classList.remove('on');
   }
+  
+  if (settings.wordWrap) {
+    document.getElementById('word-wrap-toggle').classList.add('on');
+    applyWordWrap(true);
+  }
+
   if (!settings.autoIndent) document.getElementById('auto-indent-toggle').classList.remove('on');
   if (!settings.clearBeforeRun) document.getElementById('clear-before-run-toggle').classList.remove('on');
 })();
