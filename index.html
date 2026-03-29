@@ -476,6 +476,7 @@
     font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.8px; color: var(--text3);
     padding: 18px 0 6px;
+    display: flex; align-items: center; justify-content: space-between;
   }
   .setting-row {
     display: flex; align-items: center; padding: 11px 0;
@@ -509,7 +510,7 @@
 
   /* ── Package Manager UI ── */
   .pkg-input-group {
-    display: flex; gap: 8px; margin-top: 8px;
+    display: flex; gap: 8px; margin-top: 8px; width: 100%;
   }
   .pkg-input {
     flex: 1; background: var(--surface2); border: 1px solid var(--border-md);
@@ -522,6 +523,21 @@
     font-weight: 600; cursor: pointer;
   }
   .pkg-btn:active { transform: scale(0.96); }
+
+  #installed-pkgs-list {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+  }
+  .pkg-tag {
+    font-size: 10px; font-family: var(--mono); font-weight: 500;
+    padding: 3px 8px; border-radius: 6px;
+    background: var(--green-bg); color: var(--green);
+    border: 1px solid rgba(42, 122, 74, 0.15);
+  }
+  .refresh-btn {
+    font-size: 10px; color: var(--accent); cursor: pointer;
+    text-transform: none; font-weight: 500; letter-spacing: 0;
+  }
+  .refresh-btn:active { opacity: 0.6; }
 
   /* ── Toast ── */
   #toast {
@@ -793,12 +809,19 @@
         <div class="toggle on" id="clear-before-run-toggle" onclick="toggleSetting('clear-before-run')"></div>
       </div>
 
-      <div class="setting-section-title">包管理器 (PyPI)</div>
+      <div class="setting-section-title">
+        包管理器 (PyPI) 
+        <span class="refresh-btn" onclick="refreshInstalledPkgs()">[刷新列表]</span>
+      </div>
       <div class="setting-row" style="flex-direction:column; align-items:flex-start;">
         <div class="setting-label"><p>安装第三方库</p><span>输入包名从 PyPI 安装 (例如 requests)</span></div>
         <div class="pkg-input-group">
           <input type="text" id="pkg-input" class="pkg-input" placeholder="包名...">
           <button class="pkg-btn" id="pkg-install-btn" onclick="installPackageManual()">安装</button>
+        </div>
+        <div id="installed-pkgs-list">
+          <!-- 这里动态渲染已安装的库标签 -->
+          <span style="font-size:10px;color:var(--text3)">正在获取已安装列表...</span>
         </div>
       </div>
     </div>
@@ -935,6 +958,7 @@ mpl.rcParams['axes.unicode_minus'] = False
     setTimeout(() => {
       document.getElementById('loading-overlay').style.opacity = '0';
       setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
+      refreshInstalledPkgs(); // 初始加载完成后获取列表
     }, 300);
   } catch(e) {
     setStatus('error', '加载失败');
@@ -1082,6 +1106,7 @@ builtins.input = _custom_input
           }
         }
       }
+      refreshInstalledPkgs(); // 自动安装后刷新列表
     }
 
     const hasPlt = code.includes('matplotlib') || code.includes('plt.');
@@ -1476,7 +1501,6 @@ function updateLineNumbers() {
   const ln = document.getElementById('line-numbers');
   if (!ed || !ln) return;
   
-  // 如果开启了 WordWrap，行号同步会变得复杂，简单起见在 Wrap 模式下仅显示原始物理行
   const lineCount = (ed.value.match(/\n/g) ||[]).length + 1;
   if (ln._lastCount === lineCount) return;
   ln._lastCount = lineCount;
@@ -1699,7 +1723,6 @@ window.addEventListener('pointermove', (e) => {
 });
 window.addEventListener('pointerup', () => { resizing = false; resizer.classList.remove('dragging'); });
 
-// ── Snippets ──
 const SNIPPETS =[
   {
     icon: '🤖',
@@ -1856,6 +1879,7 @@ document.getElementById('snippet-btn').onclick = () => {
 };
 document.getElementById('settings-btn').onclick = () => {
   document.getElementById('settings-overlay').classList.add('open');
+  refreshInstalledPkgs(); // 每次打开设置也刷新一下
 };
 
 // ── Settings ──
@@ -1897,7 +1921,30 @@ function toggleSetting(key) {
   }
 }
 
-// ── 可视化包管理器 ──
+// ── 包管理器 ──
+async function refreshInstalledPkgs() {
+  const listEl = document.getElementById('installed-pkgs-list');
+  if (!pyodide) return;
+
+  try {
+    // 获取 Python 环境中已载入的核心库和通过 micropip 安装的库
+    const pkgs = await pyodide.runPythonAsync(`
+      import sys, micropip
+      # 获取已安装的库名列表并去重排序
+      installed = sorted(list(set([p.name for p in micropip.list()] + list(sys.modules.keys()))))
+      # 过滤掉内部私有模块和过于琐碎的子模块
+      filtered =[p for p in installed if not p.startswith('_') and '.' not in p and len(p) > 1]
+      ','.join(filtered)
+    `);
+    
+    const pkgArray = pkgs.split(',').filter(p => p);
+    listEl.innerHTML = pkgArray.map(p => `<span class="pkg-tag">${p}</span>`).join('');
+    if (pkgArray.length === 0) listEl.innerHTML = '<span style="font-size:10px;color:var(--text3)">暂无已安装的第三方库</span>';
+  } catch (err) {
+    listEl.innerHTML = '<span style="font-size:10px;color:var(--red)">获取列表失败</span>';
+  }
+}
+
 async function installPackageManual() {
   const input = document.getElementById('pkg-input');
   const btn = document.getElementById('pkg-install-btn');
@@ -1913,17 +1960,16 @@ async function installPackageManual() {
   appendOutput(`\n📦 正在手动安装包: ${pkgName}...\n`, 'info');
 
   try {
-    // 优先尝试 loadPackage (如果是 Pyodide 官方库)
     try {
       await pyodide.loadPackage(pkgName);
       appendOutput(`✓ ${pkgName} 已通过官方库成功安装\n`, 'success');
     } catch (_) {
-      // 失败则尝试 micropip (从 PyPI)
       await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkgName}')`);
       appendOutput(`✓ ${pkgName} 已从 PyPI 成功安装\n`, 'success');
     }
     showToast(`✓ 安装成功: ${pkgName}`);
     input.value = '';
+    refreshInstalledPkgs(); // 安装成功后刷新列表
   } catch (err) {
     appendOutput(`✗ 安装失败: ${err.message}\n`, 'stderr');
     showToast('安装失败，请检查包名或网络');
@@ -1949,7 +1995,6 @@ function importFile(e) {
     const name = file.name || 'imported.py';
     addTab(name, code);
     showToast(`✓ 已导入文件: ${name}`);
-    // 重置 input 以便下次导入相同文件
     e.target.value = '';
   };
   reader.readAsText(file);
