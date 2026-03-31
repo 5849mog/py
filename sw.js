@@ -1,10 +1,10 @@
 // PyRunner Service Worker
 // 缓存策略：Shell 文件强缓存，Pyodide/CDN 资源网络优先
 
-const VERSION = 'pyrunner-v1';
+const VERSION = 'pyrunner-v2';
 
 // 需要预缓存的本地文件（App Shell）
-const SHELL_CACHE = 'pyrunner-shell-v1';
+const SHELL_CACHE = 'pyrunner-shell-v2';
 const SHELL_FILES = [
   './index.html',
   './manifest.json',
@@ -14,11 +14,13 @@ const SHELL_FILES = [
 ];
 
 // CDN 资源缓存（Pyodide 等大文件，网络优先 + 缓存兜底）
-const CDN_CACHE = 'pyrunner-cdn-v1';
+const CDN_CACHE = 'pyrunner-cdn-v2';
 const CDN_HOSTS = [
   'cdn.jsdelivr.net',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
+  'raw.githubusercontent.com',       // NotoSansSC 字体原始下载域
+  'objects.githubusercontent.com',    // GitHub LFS / release 资源域
 ];
 
 // ── Install：预缓存 App Shell ──
@@ -34,11 +36,12 @@ self.addEventListener('install', (e) => {
 
 // ── Activate：清理旧版缓存 ──
 self.addEventListener('activate', (e) => {
+  const VALID_CACHES = [SHELL_CACHE, CDN_CACHE];
   e.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(k => k !== SHELL_CACHE && k !== CDN_CACHE)
+          .filter(k => !VALID_CACHES.includes(k))
           .map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())

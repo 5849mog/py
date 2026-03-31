@@ -468,6 +468,16 @@
   .snippet-text .snippet-name { font-size: 13px; font-weight: 600; }
   .snippet-text .snippet-desc { font-size: 11.5px; color: var(--text3); margin-top: 1px; }
   .snippet-arrow { color: var(--text3); font-size: 16px; }
+  .snippet-actions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+  .snippet-load-btn, .snippet-newtab-btn {
+    font-size: 10.5px; font-weight: 600; padding: 3px 8px;
+    border-radius: 6px; cursor: pointer; transition: background 0.12s, color 0.12s;
+    text-align: center; white-space: nowrap;
+  }
+  .snippet-load-btn { background: var(--accent-light); color: var(--accent-text); }
+  .snippet-load-btn:hover { background: var(--accent); color: white; }
+  .snippet-newtab-btn { background: var(--surface3); color: var(--text2); }
+  .snippet-newtab-btn:hover { background: var(--border-md); color: var(--text); }
 
   /* ── Settings ── */
   #settings-drawer { max-height: 85vh; }
@@ -669,15 +679,8 @@
     </div>
   </header>
 
-  <!-- Tab bar -->
-  <div id="tab-bar">
-    <div class="tab active" data-idx="0">
-      <span class="tab-dot" style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;"></span>
-      main.py
-      <span class="tab-close" onclick="removeTab(event,0)">×</span>
-    </div>
-    <div class="tab-add" id="add-tab-btn">+</div>
-  </div>
+  <!-- Tab bar — 由 renderTabs() 动态渲染，不硬编码 -->
+  <div id="tab-bar"></div>
 
   <!-- Main area -->
   <div id="main">
@@ -842,6 +845,9 @@
 <div id="toast"></div>
 
 <script>
+// ── 初始代码（必须在 tabs 之前声明，避免 let 的 TDZ 问题）──
+const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
+
 // ── State ──
 let pyodide = null;
 let activeTab = 0;
@@ -883,7 +889,13 @@ let tabs = _savedState ? _savedState.tabs :[{ name: 'main.py', code: _INITIAL_CO
 if (_savedState) {
   activeTab = Math.min(_savedState.active, tabs.length - 1);
 }
-setInterval(saveState, 3000);
+
+// debounce 保存：内容变化后 1.5s 无操作才写入，避免频繁序列化大代码
+let _saveTimer = null;
+function debounceSaveState() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveState, 1500);
+}
 
 // ── Pyodide init ──
 async function initPyodide() {
@@ -959,6 +971,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       document.getElementById('loading-overlay').style.opacity = '0';
       setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
       refreshInstalledPkgs(); // 初始加载完成后获取列表
+      initOutputScrollListener(); // 启动输出智能滚动监听
     }, 300);
   } catch(e) {
     setStatus('error', '加载失败');
@@ -969,20 +982,36 @@ mpl.rcParams['axes.unicode_minus'] = False
 
 // ── Run / Stop ──
 let _stopRequested = false;
-function toggleRun() { if (isRunning) { _stopRequested = true; } else { runCode(); } }
+function toggleRun() {
+  if (isRunning) {
+    _stopRequested = true;
+    // Pyodide 在主线程同步运行，点击停止只在当前代码执行完毕后才生效
+    // 如果代码含有 await（如 input()），则能更快响应
+    showToast('⏹ 停止请求已发出，将在当前操作完成后生效');
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+  } else {
+    runCode();
+  }
+}
 function setRunBtn(running) {
   const btn = document.getElementById('run-btn');
   const icon = document.getElementById('run-icon');
   const label = document.getElementById('run-label');
+  btn.disabled = false;
+  btn.style.opacity = '';
   if (running) {
     btn.classList.remove('loading');
     icon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
     label.textContent = '停止';
     btn.style.background = 'var(--red)';
+    btn.title = '停止运行（将在当前操作完成后生效）';
   } else {
     icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
     label.textContent = '运行';
     btn.style.background = '';
+    btn.title = '运行 (Ctrl+Enter)';
   }
 }
 
@@ -992,9 +1021,14 @@ async function runCode() {
   if (!code.trim()) { showToast('请输入代码'); return; }
   isRunning = true;
   _stopRequested = false;
+  _userScrolledUp = false; // 每次新运行重置，自动跟随到底部
   setRunBtn(true);
   setStatus('loading', '运行中');
   if (settings.clearBeforeRun) clearOutput();
+
+  // 运行期间锁定编辑器，防止用户误以为可以实时修改
+  const _edLock = document.getElementById('editor');
+  if (_edLock) { _edLock.readOnly = true; _edLock.style.opacity = '0.7'; }
 
   const t0 = performance.now();
   let outputEl = document.getElementById('output-content');
@@ -1028,6 +1062,18 @@ def _custom_input(prompt=""):
 builtins.input = _custom_input
 `);
   }
+  // stdin 处理：只初始化一次，放到 runCode 外更合理，但为兼容现有结构在此处用 flag 保护
+  if (!window._stdinInstalled) {
+    window._stdinInstalled = true;
+    document.getElementById('stdin-submit').onclick = () => {
+      const val = document.getElementById('stdin-input').value;
+      document.getElementById('stdin-overlay').classList.remove('open');
+      if (inputResolve) { inputResolve(val); inputResolve = null; }
+    };
+    document.getElementById('stdin-input').onkeydown = (e) => {
+      if (e.key === 'Enter') document.getElementById('stdin-submit').click();
+    };
+  }
   window._pyrunner_input = (prompt) => {
     return new Promise(resolve => {
       document.getElementById('stdin-prompt').textContent = prompt || '请输入：';
@@ -1036,14 +1082,6 @@ builtins.input = _custom_input
       document.getElementById('stdin-input').focus();
       inputResolve = resolve;
     });
-  };
-  document.getElementById('stdin-submit').onclick = () => {
-    const val = document.getElementById('stdin-input').value;
-    document.getElementById('stdin-overlay').classList.remove('open');
-    if (inputResolve) { inputResolve(val); inputResolve = null; }
-  };
-  document.getElementById('stdin-input').onkeydown = (e) => {
-    if (e.key === 'Enter') document.getElementById('stdin-submit').click();
   };
 
   try {
@@ -1094,11 +1132,16 @@ builtins.input = _custom_input
         if (!installed) {
           const pipName = pkg.replace(/-/g, '_');
           try {
+            // 通过 globals.set 传参，避免字符串拼接注入
+            pyodide.globals.set('_auto_pkg', pkg);
+            pyodide.globals.set('_auto_pkg_mod', pipName);
             await pyodide.runPythonAsync(
               `import micropip as _mp, sys as _sys\n` +
-              `if '${pipName}' not in _sys.modules:\n` +
-              `    await _mp.install('${pkg}')\n`
+              `if _auto_pkg_mod not in _sys.modules:\n` +
+              `    await _mp.install(_auto_pkg)\n`
             );
+            pyodide.globals.delete('_auto_pkg');
+            pyodide.globals.delete('_auto_pkg_mod');
             appendOutput(`  ✓ ${pkg} 安装成功 (PyPI)\n`, 'success');
             installed = true;
           } catch (err2) {
@@ -1348,10 +1391,16 @@ mpl.rcParams['axes.unicode_minus'] = False
         bi.src = img.src;
         bi.style.cssText = 'max-width:100%;max-height:90dvh;border-radius:10px;';
         const tip = document.createElement('div');
-        tip.textContent = '点击任意处关闭';
-        tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;';
+        tip.textContent = '点击任意处或按 Esc 关闭';
+        tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;white-space:nowrap;';
         ov.append(bi, tip);
-        ov.onclick = () => ov.remove();
+        const closeOv = () => {
+          ov.remove();
+          document.removeEventListener('keydown', escHandler);
+        };
+        const escHandler = (ev) => { if (ev.key === 'Escape') closeOv(); };
+        ov.onclick = closeOv;
+        document.addEventListener('keydown', escHandler);
         document.body.appendChild(ov);
       };
       const wrap2 = document.createElement('span');
@@ -1383,6 +1432,9 @@ mpl.rcParams['axes.unicode_minus'] = False
     setStatus('ready', '就绪');
   } catch(e) {
     if (_stopRequested) {
+      // 停止时强制关闭 stdin overlay，resolve 悬空的 Promise，防止泄漏
+      document.getElementById('stdin-overlay').classList.remove('open');
+      if (inputResolve) { inputResolve(''); inputResolve = null; }
       appendOutput('\n⏹ 已手动停止执行', 'info');
       setStatus('ready', '就绪');
     } else {
@@ -1391,8 +1443,11 @@ mpl.rcParams['axes.unicode_minus'] = False
       const execIdx = lines.findIndex(l => l.includes('<exec>'));
       const relevant = execIdx >= 0 ? lines.slice(execIdx) : lines.slice(-8);
       appendOutput('\n' + relevant.join('\n'), 'stderr');
-      const lineMatch = raw.match(/line (\d+)/);
-      if (lineMatch) highlightErrorLine(parseInt(lineMatch[1]));
+      // 取 <exec> 之后最靠近错误点的行号，而非第一个（可能是解释器内部行）
+      const relevantText = relevant.join('\n');
+      const lineMatches = [...relevantText.matchAll(/line (\d+)/g)];
+      const lineNo = lineMatches.length > 0 ? parseInt(lineMatches[lineMatches.length - 1][1]) : 0;
+      if (lineNo > 0) highlightErrorLine(lineNo);
       setStatus('error', '出错');
       setTimeout(() => { setStatus('ready', '就绪'); clearErrorHighlight(); }, 4000);
     }
@@ -1400,11 +1455,26 @@ mpl.rcParams['axes.unicode_minus'] = False
   isRunning = false;
   _stopRequested = false;
   setRunBtn(false);
+  // 解锁编辑器
+  const _edUnlock = document.getElementById('editor');
+  if (_edUnlock) { _edUnlock.readOnly = false; _edUnlock.style.opacity = ''; }
   syncScroll();
 }
 
 // ── Output helpers ──
 let _outputRaf = null;
+let _outputLineCount = 0; // 计数器替代 querySelectorAll，避免密集输出时频繁 DOM 查询
+let _userScrolledUp = false; // 用户主动上滚时暂停自动跟随
+
+// 监听用户在输出区域的滚动行为
+function initOutputScrollListener() {
+  const s = document.getElementById('output-scroll');
+  if (!s) return;
+  s.addEventListener('scroll', () => {
+    const atBottom = s.scrollHeight - s.scrollTop - s.clientHeight < 32;
+    _userScrolledUp = !atBottom;
+  }, { passive: true });
+}
 
 function appendOutput(text, cls) {
   const el = document.getElementById('output-content');
@@ -1425,6 +1495,7 @@ function appendOutput(text, cls) {
       span._cls = cls || '';
       span._lineOpen = isLast;
       el.appendChild(span);
+      _outputLineCount++;
     }
   });
   scrollOutput();
@@ -1433,29 +1504,36 @@ function appendOutput(text, cls) {
 
 function clearOutput() {
   document.getElementById('output-content').innerHTML = '';
+  _outputLineCount = 0;
+  _userScrolledUp = false;
   const lc = document.getElementById('output-linecount'); if(lc) lc.textContent='';
 }
 
 const MAX_OUTPUT_LINES = 2000;
 function trimOutputIfNeeded() {
+  if (_outputLineCount <= MAX_OUTPUT_LINES) return;
   const el = document.getElementById('output-content');
   const spans = el.querySelectorAll('.out-line');
-  if (spans.length > MAX_OUTPUT_LINES) {
-    const notice = document.createElement('span');
-    notice.className = 'out-line info';
-    notice.textContent = `… 输出过多，已截断至最新 ${MAX_OUTPUT_LINES} 行 …\n`;
-    for (let i = 0; i < spans.length - MAX_OUTPUT_LINES; i++) spans[i].remove();
-    el.insertBefore(notice, el.firstChild);
-  }
+  const toRemove = spans.length - MAX_OUTPUT_LINES;
+  if (toRemove <= 0) return;
+  const notice = document.createElement('span');
+  notice.className = 'out-line info';
+  notice.textContent = `… 输出过多，已截断至最新 ${MAX_OUTPUT_LINES} 行 …\n`;
+  for (let i = 0; i < toRemove; i++) spans[i].remove();
+  el.insertBefore(notice, el.firstChild);
+  _outputLineCount = MAX_OUTPUT_LINES;
 }
 
 function scrollOutput() {
   const s = document.getElementById('output-scroll');
   if (_outputRaf) return;
   _outputRaf = requestAnimationFrame(() => {
-    s.scrollTop = s.scrollHeight; _outputRaf = null;
+    _outputRaf = null;
+    if (!_userScrolledUp) {
+      s.scrollTop = s.scrollHeight;
+    }
     const lc = document.getElementById('output-linecount');
-    if (lc) { const n = document.getElementById('output-content').querySelectorAll('.out-line').length; lc.textContent = n > 0 ? n + ' 行' : ''; }
+    if (lc) lc.textContent = _outputLineCount > 0 ? _outputLineCount + ' 行' : '';
   });
 }
 
@@ -1467,8 +1545,6 @@ function setStatus(kind, text) {
   txt.textContent = text;
   dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
 }
-
-const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
 
 let _highlightRaf = null;
 function highlightCode() {
@@ -1521,6 +1597,35 @@ function syncScroll() {
 }
 
 window.addEventListener('resize', syncScroll);
+
+// ── 移动端软键盘适配 (visualViewport API) ──
+// iOS/Android 软键盘弹起时会压缩布局，用 visualViewport 动态修正 app 高度
+if (window.visualViewport) {
+  const _app = document.getElementById('app');
+  const _onViewportResize = () => {
+    // visualViewport.height 是键盘弹起后实际可见区域高度
+    const vh = window.visualViewport.height;
+    const offsetTop = window.visualViewport.offsetTop;
+    _app.style.height = vh + 'px';
+    _app.style.top = offsetTop + 'px';
+    _app.style.position = 'fixed';
+    _app.style.width = '100%';
+    syncScroll();
+  };
+  const _onViewportScroll = () => {
+    _app.style.top = window.visualViewport.offsetTop + 'px';
+  };
+  window.visualViewport.addEventListener('resize', _onViewportResize);
+  window.visualViewport.addEventListener('scroll', _onViewportScroll);
+  // 键盘收起时恢复
+  window.visualViewport.addEventListener('resize', () => {
+    if (window.visualViewport.height >= window.innerHeight * 0.85) {
+      _app.style.height = '';
+      _app.style.top = '';
+      _app.style.position = '';
+    }
+  });
+}
 
 let _errLineNo = 0;
 function highlightErrorLine(lineNo) {
@@ -1580,6 +1685,7 @@ function initEditor(code) {
   ed.addEventListener('input', () => {
     if (tabs[activeTab]) tabs[activeTab].code = ed.value;
     highlightCode();
+    debounceSaveState();
   });
 
   ed.addEventListener('scroll', syncScroll);
@@ -1647,7 +1753,6 @@ function initEditor(code) {
 }
 
 // ── Tabs ──
-let tabCounter = 1;
 function startRenameTab(idx, div) {
   const nameEl = div.querySelector('.tab-name'); if (!nameEl) return;
   const old = tabs[idx].name;
@@ -1655,14 +1760,18 @@ function startRenameTab(idx, div) {
   inp.value = old;
   inp.style.cssText = 'width:80px;font-size:12px;font-family:var(--sans);font-weight:500;background:var(--surface3);border:1px solid var(--accent);border-radius:4px;padding:0 4px;color:var(--text);outline:none;';
   nameEl.replaceWith(inp); inp.focus(); inp.select();
-  const commit = () => { const v = inp.value.trim()||old; tabs[idx].name = v.endsWith('.py')?v:v+'.py'; renderTabs(); saveState(); };
+  const commit = () => { const v = inp.value.trim()||old; tabs[idx].name = v.endsWith('.py')?v:v+'.py'; renderTabs(); debounceSaveState(); };
   inp.onblur = commit;
   inp.onkeydown = (e) => { if(e.key==='Enter'){e.preventDefault();inp.blur();} if(e.key==='Escape'){inp.value=old;inp.blur();} };
 }
 function addTab(name, code) {
-  tabCounter++;
+  // 新建文件名：扫描现有 tab 中 scriptN 的最大值，取 N+1，避免删掉又建出现跳号
+  const nextNum = () => {
+    const nums = tabs.map(t => { const m = t.name.match(/^script(\d+)\.py$/); return m ? parseInt(m[1]) : 0; });
+    return (nums.length ? Math.max(...nums) : 0) + 1;
+  };
   tabs.push({ 
-    name: name || 'script' + tabCounter + '.py', 
+    name: name || 'script' + nextNum() + '.py', 
     code: code || '# 新文件\nprint("Hello, World!")\n' 
   });
   switchTab(tabs.length - 1);
@@ -1673,6 +1782,7 @@ function switchTab(idx) {
   const _edT = document.getElementById('editor');
   if(_edT) tabs[activeTab].code = _edT.value;
   activeTab = idx;
+  clearErrorHighlight(); // 切换 Tab 时清除旧 Tab 残留的错误高亮
   if(_edT){ _edT.value = tabs[idx].code || ''; highlightCode(); }
   renderTabs();
 }
@@ -1703,8 +1813,6 @@ function renderTabs() {
   add.onclick = () => addTab();
   bar.appendChild(add);
 }
-document.getElementById('add-tab-btn').onclick = () => addTab();
-
 // ── Resizer ──
 let resizing = false, startY = 0, startH = 0;
 const resizer = document.getElementById('resizer');
@@ -1852,13 +1960,48 @@ function renderSnippets() {
   SNIPPETS.forEach(s => {
     const div = document.createElement('div');
     div.className = 'snippet-item';
-    div.innerHTML = `<div class="snippet-icon">${s.icon}</div><div class="snippet-text"><div class="snippet-name">${s.name}</div><div class="snippet-desc">${s.desc}</div></div><span class="snippet-arrow">›</span>`;
-    div.onclick = () => {
+    div.innerHTML = `<div class="snippet-icon">${s.icon}</div><div class="snippet-text"><div class="snippet-name">${s.name}</div><div class="snippet-desc">${s.desc}</div></div><div class="snippet-actions"><span class="snippet-load-btn" title="覆盖当前 Tab">加载</span><span class="snippet-newtab-btn" title="新建 Tab 打开">新建</span></div>`;
+
+    div.querySelector('.snippet-load-btn').onclick = (e) => {
+      e.stopPropagation();
+      const currentCode = (document.getElementById('editor') || {}).value || '';
+      if (currentCode.trim() && currentCode !== s.code) {
+        // 当前 Tab 有内容，二次确认
+        if (!div._confirmPending) {
+          div._confirmPending = true;
+          div.querySelector('.snippet-load-btn').textContent = '确认覆盖';
+          div.querySelector('.snippet-load-btn').style.color = 'var(--red)';
+          div._confirmTimer = setTimeout(() => {
+            div._confirmPending = false;
+            div.querySelector('.snippet-load-btn').textContent = '加载';
+            div.querySelector('.snippet-load-btn').style.color = '';
+          }, 2500);
+          showToast('再次点击「确认覆盖」当前代码');
+          return;
+        }
+        clearTimeout(div._confirmTimer);
+        div._confirmPending = false;
+      }
       tabs[activeTab].code = s.code;
       const _edS = document.getElementById('editor'); if(_edS){ _edS.value = s.code; highlightCode(); }
       closeSnippets();
       showToast('已加载: ' + s.name);
     };
+
+    div.querySelector('.snippet-newtab-btn').onclick = (e) => {
+      e.stopPropagation();
+      addTab(s.name.replace(/[^\w\u4e00-\u9fa5]/g, '_') + '.py', s.code);
+      closeSnippets();
+      showToast('已在新标签页打开: ' + s.name);
+    };
+
+    // 点击整行默认走"加载"逻辑（触发 load btn click）
+    div.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('snippet-load-btn') && !e.target.classList.contains('snippet-newtab-btn')) {
+        div.querySelector('.snippet-load-btn').click();
+      }
+    });
+
     list.appendChild(div);
   });
 }
@@ -1964,7 +2107,10 @@ async function installPackageManual() {
       await pyodide.loadPackage(pkgName);
       appendOutput(`✓ ${pkgName} 已通过官方库成功安装\n`, 'success');
     } catch (_) {
-      await pyodide.runPythonAsync(`import micropip; await micropip.install('${pkgName}')`);
+      // 使用 globals.set 传参，避免字符串拼接注入风险
+      pyodide.globals.set('_manual_pkg', pkgName);
+      await pyodide.runPythonAsync(`import micropip; await micropip.install(_manual_pkg)`);
+      pyodide.globals.delete('_manual_pkg');
       appendOutput(`✓ ${pkgName} 已从 PyPI 成功安装\n`, 'success');
     }
     showToast(`✓ 安装成功: ${pkgName}`);
@@ -2054,7 +2200,7 @@ function clearEditor() {
     tabs[activeTab].code = '';
     const _edC = document.getElementById('editor'); if(_edC){ _edC.value = ''; highlightCode(); }
     clearErrorHighlight();
-    saveState();
+    debounceSaveState();
     showToast('已清空');
   } else {
     btn._confirmPending = true;
@@ -2120,10 +2266,14 @@ function downloadCode() {
 })();
 
 // ── Start ──
+renderTabs(); // 页面初始化时立即渲染所有恢复的 Tab（修复刷新后只显示一个的 bug）
 initPyodide();
 </script>
 <script>
-if ('serviceWorker' in navigator) {
+// 页面关闭时强制立即保存（绕过 debounce）
+window.addEventListener('beforeunload', () => { clearTimeout(_saveTimer); saveState(); });
+
+
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
       .then(r => console.log('[SW] registered:', r.scope))
