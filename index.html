@@ -2135,11 +2135,12 @@ const SNIPPETS =[
     desc: 'Pandas 数据处理与动态折线图',
     code: `import pandas as pd\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在使用 Pandas 生成模拟金融时间序列数据...")\n\n# 生成100天的日期索引\ndates = pd.date_range('20250101', periods=100)\n# 生成4只随机股票的波动数据并累加计算累计收益\ndf = pd.DataFrame(np.random.randn(100, 4), index=dates, columns=['Apple', 'Google', 'Microsoft', 'Tesla'])\ndf = df.cumsum()\n\n# 绘制 DataFrame\nax = df.plot(figsize=(10, 5), linewidth=2, colormap='tab10')\nplt.title("Pandas 模拟股票走势分析", fontsize=14, pad=15)\nplt.xlabel("Date")\nplt.ylabel("Cumulative Returns")\nplt.grid(True, alpha=0.3)\nplt.legend(loc='upper left')\nplt.tight_layout()\nplt.show()\n\nprint("\\n尾部数据预览 (df.tail()):")\ndf.tail()\n`
   },
-  {
+  
+{
     icon: '☀️',
-    name: 'Plotly 交互旭日图',
-    desc: '层级数据结构的可视化利器',
-    code: `import plotly.express as px\n\nprint("正在渲染 Plotly 旭日图...")\nprint("💡 提示：这是一个高度交互的图表，你可以点击各个扇区放大查看细节！")\n\ndata = dict(\n    character=["Eve", "Cain", "Seth", "Enos", "Noam", "Abel", "Awan", "Enoch", "Azura"],\n    parent=["", "Eve", "Eve", "Seth", "Seth", "Eve", "Eve", "Awan", "Eve"],\n    value=[10, 14, 12, 10, 2, 6, 6, 4, 4]\n)\n\nfig = px.sunburst(\n    data,\n    names='character',\n    parents='parent',\n    values='value',\n    color='value',\n    color_continuous_scale='RdBu'\n)\n\nfig.update_layout(\n    title="Plotly 旭日图 (可点击扇区交互)", \n    margin=dict(t=40, l=0, r=0, b=0),\n    height=450\n)\nfig\n`
+    name: 'Plotly 全景旭日图',
+    desc: '探索全球人口数据的极致交互动画',
+    code: `import plotly.express as px\n\nprint("🌌 正在渲染【全球人口与寿命】交互式旭日图...")\nprint("💡 体验提示：")\nprint("   1. 👆 点击【大洲】扇区，丝滑潜入该洲的所有国家！")\nprint("   2. 🎯 将鼠标悬停在色块上，查看详细数据。")\nprint("   3. ⏺️ 点击最中心的圆点，即可退回上一层级。\\n")\n\n# 获取 Plotly 内置的真实世界数据集 (142个国家)\ndf = px.data.gapminder().query("year == 2007")\n\n# 创建高阶旭日图：包含面积大小与颜色深度的双重映射\nfig = px.sunburst(\n    df,\n    path=['continent', 'country'],     # 层级结构：大洲 -> 国家\n    values='pop',                      # 扇区面积 = 人口总数\n    color='lifeExp',                   # 扇区颜色 = 预期寿命\n    hover_data=['gdpPercap'],          # 悬停显示 = 人均GDP\n    color_continuous_scale='Plasma',   # 选用极具科技感的 Plasma 渐变色\n    color_continuous_midpoint=65       # 颜色渐变中点(65岁)\n)\n\n# UI 深度定制与美化\nfig.update_layout(\n    title={'text': "🌍 2007全球人口分布与寿命全景图", 'x': 0.5, 'xanchor': 'center'},\n    margin=dict(t=50, l=10, r=10, b=10),\n    height=500,\n    paper_bgcolor='rgba(0,0,0,0)'      # 透明背景完美融合亮/暗主题\n)\n\n# 优化扇区边框和文字显示效果\nfig.update_traces(\n    textinfo='label+percent parent',   # 显示名称和在父级中的占比\n    insidetextorientation='radial',    # 文字呈放射状排列\n    marker=dict(line=dict(color='rgba(255,255,255,0.5)', width=0.8)), # 添加精致描边\n    hovertemplate="<b>%{label}</b><br>👥 人口: %{value:,.0f}<br>🧬 预期寿命: %{color:.1f} 岁<extra></extra>"\n)\n\nfig\n`
   },
   {
     icon: '🔥',
