@@ -1858,20 +1858,15 @@ function updateLineNumbers() {
   // scrollTop 由 syncScroll 统一管理，这里不重复设置
 }
 
-// ── 滚动同步：专用 RAF，只做最轻量的位置同步，不触发高亮或行号重算 ──
-let _scrollRaf = null;
+// ── 滚动同步：移除延迟，实现真正的零延迟像素级同步 ──
 function syncScroll() {
-  if (_scrollRaf) return;
-  _scrollRaf = requestAnimationFrame(() => {
-    _scrollRaf = null;
-    const ed  = document.getElementById('editor');
-    const pre = document.getElementById('highlight-pre');
-    const ln  = document.getElementById('line-numbers');
-    if (!ed || !pre) return;
-    pre.scrollTop  = ed.scrollTop;
-    pre.scrollLeft = ed.scrollLeft;
-    if (ln) ln.scrollTop = ed.scrollTop;
-  });
+  const ed  = document.getElementById('editor');
+  const pre = document.getElementById('highlight-pre');
+  const ln  = document.getElementById('line-numbers');
+  if (!ed || !pre) return;
+  pre.scrollTop  = ed.scrollTop;
+  pre.scrollLeft = ed.scrollLeft;
+  if (ln) ln.scrollTop = ed.scrollTop;
 }
 
 window.addEventListener('resize', syncScroll);
