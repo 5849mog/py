@@ -73,6 +73,14 @@
       --blue-bg: #0A1C32;
       --amber: #E0A840;
       --amber-bg: #201608;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
+      --shadow: 0 2px 8px rgba(0,0,0,0.35), 0 8px 24px rgba(0,0,0,0.25);
+    }
+    header {
+      background: rgba(28,27,34,0.85);
+    }
+    #toast {
+      background: #2C2B34;
     }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -90,14 +98,26 @@
     border-bottom: 1px solid var(--border);
     gap: 10px;
     flex-shrink: 0;
+    /* 微妙的底部阴影增加层次感 */
+    box-shadow: 0 1px 0 var(--border), 0 2px 12px rgba(0,0,0,0.04);
+    position: relative; z-index: 10;
+    /* 支持时启用毛玻璃 */
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
   }
   .logo { display: flex; align-items: center; gap: 9px; }
   .logo-icon {
     width: 28px; height: 28px;
-    background: var(--accent);
+    background: linear-gradient(135deg, var(--accent) 0%, #E8855A 100%);
     border-radius: 7px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s;
+    box-shadow: 0 2px 8px rgba(201,107,58,0.25);
+  }
+  .logo:hover .logo-icon {
+    transform: rotate(-8deg) scale(1.08);
+    box-shadow: 0 4px 14px rgba(201,107,58,0.35);
   }
   .logo-icon svg { width: 15px; height: 15px; fill: white; }
   .logo-name { font-size: 15px; font-weight: 600; letter-spacing: -0.4px; line-height: 1; }
@@ -117,10 +137,10 @@
     background: transparent;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; color: var(--text3);
-    transition: background 0.12s, color 0.12s, border-color 0.12s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s cubic-bezier(0.34,1.56,0.64,1);
   }
   .icon-btn:hover { background: var(--surface2); color: var(--text2); border-color: var(--border-md); }
-  .icon-btn:active { background: var(--surface3); transform: scale(0.95); }
+  .icon-btn:active { background: var(--surface3); transform: scale(0.88); }
   .icon-btn svg { width: 15px; height: 15px; }
 
   /* ── Tabs ── */
@@ -145,7 +165,7 @@
     cursor: pointer;
     border-bottom: 2px solid transparent;
     white-space: nowrap;
-    transition: color 0.12s, border-color 0.12s, background 0.12s;
+    transition: color 0.18s, border-color 0.18s, background 0.18s;
     border-radius: var(--radius-xs) var(--radius-xs) 0 0;
     margin-top: 4px;
   }
@@ -156,6 +176,7 @@
     border-bottom-color: var(--accent);
     background: var(--surface);
   }
+  .tab:active { transform: scale(0.97); }
   .tab-dot {
     width: 5px; height: 5px; border-radius: 50%;
     background: var(--text3); flex-shrink: 0;
@@ -174,9 +195,9 @@
   .tab-add {
     display: flex; align-items: center; padding: 0 8px;
     color: var(--text3); cursor: pointer; font-size: 16px; font-weight: 400;
-    transition: color 0.12s;
+    transition: color 0.15s, transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
   }
-  .tab-add:hover { color: var(--accent); }
+  .tab-add:hover { color: var(--accent); transform: scale(1.2) rotate(90deg); }
 
   /* ── Editor area ── */
   #main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -204,14 +225,34 @@
     font-family: var(--sans);
     font-size: 13px; font-weight: 600;
     cursor: pointer;
-    transition: filter 0.12s, transform 0.1s;
+    transition: filter 0.15s, transform 0.12s, background 0.25s, box-shadow 0.25s;
     letter-spacing: 0.1px;
     flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
   }
-  .run-btn:hover { filter: brightness(1.08); }
-  .run-btn:active { filter: brightness(0.92); transform: scale(0.97); }
+  .run-btn::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.12);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .run-btn:hover::before { opacity: 1; }
+  .run-btn:hover { filter: brightness(1.06); }
+  .run-btn:active { transform: scale(0.96); }
   .run-btn.loading { opacity: 0.65; pointer-events: none; }
-  .run-btn svg { width: 12px; height: 12px; fill: white; flex-shrink: 0; }
+  .run-btn svg { width: 12px; height: 12px; fill: white; flex-shrink: 0; transition: transform 0.3s; }
+  /* 运行中：按钮发出柔和的橙色光晕脉冲 */
+  .run-btn.running {
+    box-shadow: 0 0 0 0 rgba(176,40,40,0.4);
+    animation: run-pulse 1.8s cubic-bezier(0.4,0,0.6,1) infinite;
+  }
+  @keyframes run-pulse {
+    0%   { box-shadow: 0 0 0 0   rgba(176,40,40,0.35); }
+    60%  { box-shadow: 0 0 0 8px rgba(176,40,40,0); }
+    100% { box-shadow: 0 0 0 0   rgba(176,40,40,0); }
+  }
   .toolbar-spacer { flex: 1; min-width: 4px; }
   .toolbar-divider { width: 1px; height: 18px; background: var(--border-md); flex-shrink: 0; margin: 0 2px; }
   .status-pill {
@@ -221,19 +262,29 @@
     border-radius: 100px;
     background: var(--surface2);
     color: var(--text3);
-    transition: background 0.25s, color 0.25s;
+    transition: background 0.35s cubic-bezier(0.4,0,0.2,1),
+                color 0.35s cubic-bezier(0.4,0,0.2,1),
+                transform 0.2s cubic-bezier(0.34,1.56,0.64,1);
     flex-shrink: 0;
     letter-spacing: 0.2px;
   }
   .status-pill.ready { background: var(--green-bg); color: var(--green); }
   .status-pill.loading { background: var(--blue-bg); color: var(--blue); }
-  .status-pill.error { background: var(--red-bg); color: var(--red); }
+  .status-pill.error { background: var(--red-bg); color: var(--red); animation: pill-shake 0.4s cubic-bezier(0.36,0.07,0.19,0.97); }
+  @keyframes pill-shake {
+    0%,100% { transform: translateX(0); }
+    20%     { transform: translateX(-3px); }
+    40%     { transform: translateX(3px); }
+    60%     { transform: translateX(-2px); }
+    80%     { transform: translateX(2px); }
+  }
   .status-dot {
     width: 5px; height: 5px; border-radius: 50%;
     background: currentColor; flex-shrink: 0;
+    transition: background 0.3s;
   }
   .status-dot.pulse { animation: pulse 1.3s ease-in-out infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
   .toolbar-icon-btn {
     width: 32px; height: 32px;
     border-radius: var(--radius-xs);
@@ -241,34 +292,58 @@
     background: transparent;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; color: var(--text3);
-    transition: background 0.12s, color 0.12s;
+    transition: background 0.15s, color 0.15s, transform 0.12s cubic-bezier(0.34,1.56,0.64,1);
     flex-shrink: 0;
   }
   .toolbar-icon-btn:hover { background: var(--surface2); color: var(--text2); }
-  .toolbar-icon-btn:active { background: var(--surface3); transform: scale(0.94); }
+  .toolbar-icon-btn:active { background: var(--surface3); transform: scale(0.88); }
   .toolbar-icon-btn svg { width: 13px; height: 13px; }
 
   /* ── Split panel ── */
   #editor-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
   #resizer {
-    height: 6px; background: var(--border); cursor: row-resize; flex-shrink: 0;
+    height: 5px; background: var(--border); cursor: row-resize; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s;
+    transition: height 0.2s cubic-bezier(0.4,0,0.2,1), background 0.15s;
     position: relative;
   }
-  #resizer:hover, #resizer.dragging { background: var(--accent-light); }
-  #resizer::after {
-    content: ''; width: 36px; height: 3px;
-    border-radius: 2px; background: var(--border-md);
-    transition: background 0.15s;
+  #resizer:hover, #resizer.dragging {
+    height: 8px;
+    background: var(--accent-light);
   }
-  #resizer:hover::after, #resizer.dragging::after { background: var(--accent); }
+  #resizer::after {
+    content: '· · ·';
+    font-size: 10px; letter-spacing: 3px;
+    color: var(--border-md);
+    transition: color 0.15s, letter-spacing 0.2s;
+    line-height: 1; user-select: none;
+  }
+  #resizer:hover::after, #resizer.dragging::after {
+    color: var(--accent);
+    letter-spacing: 5px;
+  }
 
   /* ── Code editor ── */
   #code-wrap {
     flex: 1; min-height: 120px; overflow: hidden;
     display: flex; flex-direction: row; position: relative;
     background: var(--surface);
+    /* 不用 transition，避免任何 paint/layout 开销影响滚动 */
+  }
+  /* 焦点指示器：用 pseudo-element + opacity 切换，只触发 composite，不触发 paint */
+  #code-wrap::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    z-index: 5;
+    opacity: 0;
+    transform: scaleY(1);
+    transition: opacity 0.15s;
+    pointer-events: none;
+  }
+  #code-wrap:focus-within::before {
+    opacity: 1;
   }
   #line-numbers {
     flex-shrink: 0; width: 44px;
@@ -279,6 +354,7 @@
     border-right: 1px solid var(--border);
     user-select: none; pointer-events: none;
     overflow: hidden; white-space: pre;
+    will-change: scroll-position;
   }
   #highlight-wrap {
     flex: 1; position: relative; overflow: hidden;
@@ -295,7 +371,8 @@
   #highlight-pre {
     background: transparent; border: none;
     overflow: hidden; pointer-events: none;
-    z-index: 1; color: transparent; 
+    z-index: 1; color: transparent;
+    will-change: scroll-position;
   }
   #highlight-code {
     font-family: inherit; font-size: inherit;
@@ -317,6 +394,7 @@
     resize: none; z-index: 2;
     overflow: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pan-x;
     color: transparent;
     caret-color: var(--accent);
     -webkit-text-fill-color: transparent;
@@ -405,16 +483,29 @@
     color: var(--text);
   }
   .out-line { display: block; }
-  .out-line.stderr { color: var(--red); }
-  .out-line.success { color: var(--green); }
+  .out-line.stderr { color: var(--red); animation: line-in-err 0.2s ease; }
+  .out-line.success { color: var(--green); animation: line-in-ok 0.25s cubic-bezier(0.34,1.56,0.64,1); }
   .out-line.info { color: var(--text3); font-style: italic; }
   .out-line.image-out { margin: 10px 0; }
-  .out-line.image-out img { max-width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+  .out-line.image-out img { max-width: 100%; border-radius: var(--radius-sm); border: 1px solid var(--border); display: block; animation: fade-in-up 0.35s cubic-bezier(0.4,0,0.2,1); }
+  @keyframes line-in-err {
+    from { opacity: 0; transform: translateX(-4px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes line-in-ok {
+    from { opacity: 0; transform: scale(0.97); }
+    to   { opacity: 1; transform: scale(1); }
+  }
 
   /* ── Placeholder ── */
   .output-placeholder {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     height: 100%; gap: 10px;
+    animation: fade-in-up 0.4s cubic-bezier(0.4,0,0.2,1);
+  }
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
   .output-placeholder-icon {
     width: 40px; height: 40px; border-radius: 12px;
@@ -427,21 +518,35 @@
   /* ── Bottom sheet drawer ── */
   .sheet-overlay {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4);
-    display: none; z-index: 100; align-items: flex-end;
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    background: rgba(0,0,0,0);
+    display: flex; z-index: 100; align-items: flex-end;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    pointer-events: none;
+    transition: background 0.28s cubic-bezier(0.4,0,0.2,1),
+                backdrop-filter 0.28s cubic-bezier(0.4,0,0.2,1);
   }
-  .sheet-overlay.open { display: flex; }
+  .sheet-overlay.open {
+    background: rgba(0,0,0,0.42);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    pointer-events: auto;
+  }
   .sheet {
     width: 100%; background: var(--surface);
     border-radius: var(--radius) var(--radius) 0 0;
     display: flex; flex-direction: column;
-    animation: slideUp 0.22s cubic-bezier(0.32,0.72,0,1);
+    animation: none;
+    transform: translateY(100%);
+    transition: transform 0.32s cubic-bezier(0.32,0.72,0,1);
     padding-bottom: env(safe-area-inset-bottom);
     box-shadow: 0 -4px 32px rgba(0,0,0,0.12);
+    will-change: transform;
   }
-  @keyframes slideUp { from { transform: translateY(100%); opacity: 0.5; } to { transform: translateY(0); opacity: 1; } }
+  .sheet-overlay.open .sheet {
+    transform: translateY(0);
+  }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: var(--border-md); margin: 10px auto 2px; }
   .sheet-header { display: flex; align-items: center; padding: 10px 16px 8px; gap: 10px; }
   .sheet-title { font-size: 15px; font-weight: 600; flex: 1; letter-spacing: -0.2px; }
@@ -451,11 +556,17 @@
   #snippets-list { overflow-y: auto; padding: 4px 10px 16px; flex: 1; }
   .snippet-item {
     display: flex; align-items: center; gap: 12px;
-    padding: 10px 8px;
+    padding: 10px 8px 10px 10px;
     border-radius: 10px;
-    cursor: pointer; transition: background 0.12s;
+    cursor: pointer;
+    transition: background 0.15s, box-shadow 0.15s, padding-left 0.2s;
+    border-left: 2px solid transparent;
   }
-  .snippet-item:hover { background: var(--surface2); }
+  .snippet-item:hover {
+    background: var(--surface2);
+    border-left-color: var(--accent);
+    padding-left: 12px;
+  }
   .snippet-item:active { background: var(--surface3); transform: scale(0.99); }
   .snippet-icon {
     width: 38px; height: 38px; border-radius: 10px;
@@ -505,7 +616,9 @@
   .toggle {
     width: 42px; height: 24px; border-radius: 100px;
     background: var(--surface3); border: 1px solid var(--border-md);
-    position: relative; cursor: pointer; transition: background 0.2s, border-color 0.2s;
+    position: relative; cursor: pointer;
+    transition: background 0.25s cubic-bezier(0.4,0,0.2,1),
+                border-color 0.25s;
     flex-shrink: 0;
   }
   .toggle.on { background: var(--accent); border-color: var(--accent); }
@@ -513,7 +626,7 @@
     content: ''; position: absolute;
     width: 18px; height: 18px; border-radius: 50%;
     background: white; top: 2px; left: 2px;
-    transition: transform 0.2s cubic-bezier(0.4,0,0.2,1);
+    transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1);
     box-shadow: 0 1px 4px rgba(0,0,0,0.25);
   }
   .toggle.on::after { transform: translateX(18px); }
@@ -551,15 +664,19 @@
 
   /* ── Toast ── */
   #toast {
-    position: fixed; bottom: calc(var(--toolbar-h) + 12px); left: 50%;
-    transform: translateX(-50%) translateY(80px);
-    background: var(--text); color: var(--bg);
-    padding: 9px 16px; border-radius: 100px;
+    position: fixed; top: calc(var(--header-h) + 10px); left: 50%;
+    transform: translateX(-50%) translateY(-16px);
+    background: var(--surface);
+    color: var(--text);
+    padding: 9px 16px 9px 14px;
+    border-radius: var(--radius-sm);
     font-size: 12.5px; font-weight: 500;
-    z-index: 400; transition: transform 0.25s cubic-bezier(0.32,0.72,0,1), opacity 0.25s;
+    z-index: 400;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s;
     white-space: nowrap; opacity: 0;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    box-shadow: var(--shadow), 0 0 0 1px var(--border);
     pointer-events: none;
+    border-left: 3px solid var(--accent);
   }
   #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
@@ -567,44 +684,181 @@
   #loading-overlay {
     position: fixed; inset: 0; background: var(--bg);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    z-index: 500; gap: 0;
-    transition: opacity 0.4s;
+    z-index: 500;
+    transition: opacity 0.5s cubic-bezier(0.4,0,0.2,1);
+    gap: 0;
   }
-  .loader-icon {
-    width: 56px; height: 56px; border-radius: 14px;
+  .loader-wordmark {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 40px;
+    animation: loader-appear 0.6s cubic-bezier(0.4,0,0.2,1) both;
+  }
+  .loader-wordmark-icon {
+    width: 32px; height: 32px; border-radius: 8px;
     background: var(--accent);
     display: flex; align-items: center; justify-content: center;
-    margin-bottom: 20px;
-    box-shadow: 0 8px 24px rgba(201,107,58,0.3);
+    flex-shrink: 0;
   }
-  .loader-icon svg { width: 28px; height: 28px; fill: white; }
-  .loader-logo { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; margin-bottom: 6px; }
-  .loader-logo span { color: var(--accent); }
-  .loader-subtitle { font-size: 12px; color: var(--text3); margin-bottom: 28px; }
+  .loader-wordmark-icon svg { width: 18px; height: 18px; fill: white; }
+  .loader-wordmark-text {
+    font-size: 20px; font-weight: 600; letter-spacing: -0.5px;
+    color: var(--text);
+  }
+  .loader-wordmark-text span { color: var(--accent); }
+  @keyframes loader-appear {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* 细进度条：Claude 风格的极简线条 */
   .loader-bar {
-    width: 140px; height: 2px; background: var(--border);
-    border-radius: 2px; overflow: hidden; margin-bottom: 12px;
+    width: 200px; height: 1px;
+    background: var(--border-md);
+    border-radius: 1px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    animation: loader-appear 0.6s 0.1s cubic-bezier(0.4,0,0.2,1) both;
   }
   .loader-fill {
-    height: 100%; background: var(--accent); border-radius: 2px;
-    width: 0%; transition: width 0.4s ease;
+    height: 100%;
+    background: var(--accent);
+    border-radius: 1px;
+    width: 0%;
+    transition: width 0.5s cubic-bezier(0.4,0,0.2,1);
   }
-  .loader-text { font-size: 11.5px; color: var(--text3); text-align: center; max-width: 220px; line-height: 1.5; }
+  .loader-text {
+    font-size: 11px; color: var(--text3);
+    text-align: center; max-width: 240px; line-height: 1.6;
+    min-height: 1.6em; letter-spacing: 0.1px;
+    animation: loader-appear 0.6s 0.15s cubic-bezier(0.4,0,0.2,1) both;
+  }
 
-  /* ── Input prompt ── */
-  #stdin-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-    display: none; align-items: flex-end; justify-content: center;
-    z-index: 150;
-    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  /* ── 运行历史导航 ── */
+  #history-nav {
+    display: none; align-items: center; gap: 4px;
+    margin-right: 4px;
   }
-  #stdin-overlay.open { display: flex; }
+  #history-nav.visible { display: flex; }
+  .hist-btn {
+    width: 22px; height: 22px; border-radius: 5px;
+    border: 1px solid var(--border-md);
+    background: transparent; color: var(--text3);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 11px;
+    transition: background 0.12s, color 0.12s, transform 0.12s cubic-bezier(0.34,1.56,0.64,1);
+    flex-shrink: 0;
+  }
+  .hist-btn:hover { background: var(--surface2); color: var(--text2); }
+  .hist-btn:active { transform: scale(0.88); }
+  .hist-btn:disabled { opacity: 0.3; pointer-events: none; }
+  #history-label {
+    font-size: 10px; font-weight: 600; color: var(--text3);
+    white-space: nowrap; padding: 0 2px;
+  }
+
+  /* ── 变量检查器面板 ── */
+  #vars-panel {
+    border-top: 1px solid var(--border);
+    background: var(--surface2);
+    flex-shrink: 0;
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.28s cubic-bezier(0.4,0,0.2,1);
+  }
+  #vars-panel.open { max-height: 220px; }
+  #vars-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer; user-select: none;
+  }
+  #vars-title {
+    font-size: 10px; font-weight: 700; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.8px; flex: 1;
+  }
+  #vars-count {
+    font-size: 10px; color: var(--accent); font-weight: 600;
+    background: var(--accent-light); padding: 1px 6px;
+    border-radius: 100px; display: none;
+  }
+  #vars-count.visible { display: inline; }
+  #vars-chevron {
+    width: 14px; height: 14px; color: var(--text3);
+    transition: transform 0.2s cubic-bezier(0.4,0,0.2,1);
+  }
+  #vars-panel.open #vars-chevron { transform: rotate(180deg); }
+  #vars-scroll {
+    overflow-y: auto; overflow-x: hidden;
+    max-height: 174px;
+    padding: 6px 10px 10px;
+    scrollbar-width: thin; scrollbar-color: var(--border-md) transparent;
+  }
+  #vars-grid {
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .var-row {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 4px 6px; border-radius: 6px;
+    transition: background 0.1s;
+    min-width: 0;
+  }
+  .var-row:hover { background: var(--surface3); }
+  .var-name {
+    font-family: var(--mono); font-size: 11.5px;
+    font-weight: 500; color: var(--accent-text);
+    flex-shrink: 0; max-width: 120px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .var-type {
+    font-size: 9.5px; font-weight: 600; color: var(--text3);
+    background: var(--surface3); padding: 1px 5px;
+    border-radius: 4px; flex-shrink: 0;
+    text-transform: lowercase; letter-spacing: 0.2px;
+  }
+  .var-value {
+    font-family: var(--mono); font-size: 11px; color: var(--text2);
+    flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 0;
+  }
+  .var-empty {
+    font-size: 11px; color: var(--text3); font-style: italic;
+    padding: 8px 6px;
+  }
+
+  /* ── 格式化按钮 ── */
+  .format-btn-wrap { position: relative; flex-shrink: 0; }
+  #format-status {
+    position: absolute; top: -4px; right: -4px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); display: none;
+    border: 1.5px solid var(--surface);
+  }
+  #stdin-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0);
+    display: flex; align-items: flex-end; justify-content: center;
+    z-index: 150;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    pointer-events: none;
+    transition: background 0.28s cubic-bezier(0.4,0,0.2,1),
+                backdrop-filter 0.28s cubic-bezier(0.4,0,0.2,1);
+  }
+  #stdin-overlay.open {
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    pointer-events: auto;
+  }
   #stdin-box {
     background: var(--surface);
     border-radius: var(--radius) var(--radius) 0 0;
     padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
     width: 100%; max-width: 480px;
-    animation: slideUp 0.22s cubic-bezier(0.32,0.72,0,1);
+    transform: translateY(100%);
+    transition: transform 0.32s cubic-bezier(0.32,0.72,0,1);
+    will-change: transform;
+  }
+  #stdin-overlay.open #stdin-box {
+    transform: translateY(0);
   }
   #stdin-label {
     font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -640,11 +894,12 @@
 
 <!-- Loading overlay -->
 <div id="loading-overlay">
-  <div class="loader-icon">
-    <svg viewBox="0 0 24 24" fill="white"><path d="M9.585 11.692H14.4v-3.23C14.4 5.1 12.55 3 9.585 3 6.87 3 5 4.92 5 7.462v1.015h3.23V7.4c0-.842.355-1.4 1.355-1.4s1.3.616 1.3 1.4v1.292H5v5.769c0 2.577 1.87 4.539 4.585 4.539H11v-2.308H9.585c-1 0-1.355-.615-1.355-1.461v-2h1.355zm5.1-3.692h2.73v2H14.685zm0 3.692v2h-2.73V11.7h2.73zm3.73-3.692v2h-1v3.692h1v2h-1c-2.73 0-4.415-1.962-4.415-4.539v-.385h1.685V9.97h-.73V7.97h4.46v.03z"/></svg>
+  <div class="loader-wordmark">
+    <div class="loader-wordmark-icon">
+      <svg viewBox="0 0 24 24" fill="white"><path d="M9.585 11.692H14.4v-3.23C14.4 5.1 12.55 3 9.585 3 6.87 3 5 4.92 5 7.462v1.015h3.23V7.4c0-.842.355-1.4 1.355-1.4s1.3.616 1.3 1.4v1.292H5v5.769c0 2.577 1.87 4.539 4.585 4.539H11v-2.308H9.585c-1 0-1.355-.615-1.355-1.461v-2h1.355zm5.1-3.692h2.73v2H14.685zm0 3.692v2h-2.73V11.7h2.73zm3.73-3.692v2h-1v3.692h1v2h-1c-2.73 0-4.415-1.962-4.415-4.539v-.385h1.685V9.97h-.73V7.97h4.46v.03z"/></svg>
+    </div>
+    <div class="loader-wordmark-text">Py<span>Runner</span></div>
   </div>
-  <div class="loader-logo">Py<span>Runner</span></div>
-  <div class="loader-subtitle">Python 3.11 运行平台</div>
   <div class="loader-bar"><div class="loader-fill" id="loader-fill"></div></div>
   <div class="loader-text" id="loader-text">正在准备中...</div>
 </div>
@@ -699,6 +954,16 @@
         <div id="output-header">
           <span id="output-title">输出</span><span id="output-linecount" style="font-size:10px;color:var(--text3);margin-left:6px;font-weight:400;"></span>
           <div class="output-spacer"></div>
+          <!-- 运行历史导航 -->
+          <div id="history-nav">
+            <button class="hist-btn" id="hist-prev" onclick="navHistory(-1)" title="上一次运行">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+            <span id="history-label">1/1</span>
+            <button class="hist-btn" id="hist-next" onclick="navHistory(1)" title="下一次运行">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+          </div>
           <div class="output-action-btn" id="copy-output-btn" onclick="copyOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-right:3px;vertical-align:-1px;display:inline-block"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>复制</div>
           <div class="output-action-btn" onclick="clearOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-right:3px;vertical-align:-1px;display:inline-block"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>清空</div>
         </div>
@@ -709,6 +974,18 @@
               <p>点击运行查看输出</p>
             </div>
           </div>
+        </div>
+        <!-- 变量检查器 -->
+        <div id="vars-panel">
+          <div id="vars-header" onclick="toggleVarsPanel()">
+            <span id="vars-title">变量</span>
+            <span id="vars-count"></span>
+            <div class="output-action-btn" id="copy-vars-btn" onclick="copyVars(event)" style="display: none; margin-left: auto; margin-right: 6px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-right:3px;vertical-align:-1px;display:inline-block"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>复制
+            </div>
+            <svg id="vars-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <div id="vars-scroll"><div id="vars-grid"></div></div>
         </div>
       </div>
     </div>
@@ -738,6 +1015,12 @@
     </div>
     <div class="toolbar-icon-btn" onclick="undoCode()" title="撤销">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h10a5 5 0 010 10H9"/><path d="M3 10l4-4-4-4"/></svg>
+    </div>
+    <div class="format-btn-wrap">
+      <div class="toolbar-icon-btn" id="format-btn" onclick="formatCode()" title="格式化代码 (autopep8)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10H7M21 6H3M21 14H7M21 18H3"/></svg>
+      </div>
+      <div id="format-status"></div>
     </div>
     <div class="toolbar-icon-btn" id="copy-code-btn" onclick="copyCode()" title="复制代码">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
@@ -1003,11 +1286,13 @@ function setRunBtn(running) {
   btn.style.opacity = '';
   if (running) {
     btn.classList.remove('loading');
+    btn.classList.add('running');
     icon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
     label.textContent = '停止';
     btn.style.background = 'var(--red)';
     btn.title = '停止运行（将在当前操作完成后生效）';
   } else {
+    btn.classList.remove('running');
     icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
     label.textContent = '运行';
     btn.style.background = '';
@@ -1170,9 +1455,7 @@ mpl.rcParams['axes.unicode_minus'] = False
     }
 
     const _edSync = document.getElementById('editor'); if(_edSync) tabs[activeTab].code = _edSync.value;
-    const _preRunKeys = new Set(
-      pyodide.runPython("import __main__; list(vars(__main__).keys())").toJs()
-    );
+    
 
     const _userResult = await pyodide.runPythonAsync(code);
 
@@ -1409,27 +1692,15 @@ mpl.rcParams['axes.unicode_minus'] = False
       outputEl.appendChild(wrap2);
     }
 
-    const _INTERNAL_PREFIX =['_pyrunner_', '_PNG_SIG', '_JPG_SIG', '_GIF_SIG',
-      '_BMP_SIG', '_WEBP_SIG', '_to_png_b64', '_bytes_to_b64', '_b64', '_io', '_sys',
-      '_orig_input', '_custom_input', '_Capture', '_pr_'];
-    const _postRunKeys = pyodide.runPython("list(vars(__main__).keys())").toJs();
-    const _newKeys = _postRunKeys.filter(k =>
-      !_preRunKeys.has(k) &&
-      !_INTERNAL_PREFIX.some(p => k.startsWith(p)) &&
-      k !== '_pr_del'
-    );
-    if (_newKeys.length > 0) {
-      pyodide.globals.set("_pr_del", pyodide.toPy(_newKeys));
-      pyodide.runPython(
-        "import __main__\n" +
-        "(lambda keys:[delattr(__main__, k) for k in keys if hasattr(__main__, k)])(_pr_del)\n" +
-        "del _pr_del"
-      );
-    }
+    
 
     const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
     appendOutput(`\n✓ 运行完成，耗时 ${elapsed}s`, 'success');
     setStatus('ready', '就绪');
+    // 保存运行历史快照
+    _saveOutputSnapshot();
+    // 刷新变量检查器
+    refreshVarsPanel();
   } catch(e) {
     if (_stopRequested) {
       // 停止时强制关闭 stdin overlay，resolve 悬空的 Promise，防止泄漏
@@ -1506,6 +1777,12 @@ function clearOutput() {
   document.getElementById('output-content').innerHTML = '';
   _outputLineCount = 0;
   _userScrolledUp = false;
+  // 清空输出时同步重置历史和变量面板
+  _runHistory = [];
+  _historyIdx = -1;
+  document.getElementById('history-nav').classList.remove('visible');
+  document.getElementById('vars-grid').innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
+  document.getElementById('vars-count').classList.remove('visible');
   const lc = document.getElementById('output-linecount'); if(lc) lc.textContent='';
 }
 
@@ -1565,9 +1842,8 @@ function highlightCode() {
     
     if (raw.endsWith('\n')) html += '&#8203;';
     code.innerHTML = html;
-
-    const pre = document.getElementById('highlight-pre');
-    if (pre) { pre.scrollTop = ed.scrollTop; pre.scrollLeft = ed.scrollLeft; }
+    // 高亮后同步位置，行号更新（内容变化时才到这里，不在 scroll 路径上）
+    syncScroll();
     updateLineNumbers();
   });
 }
@@ -1576,24 +1852,29 @@ function updateLineNumbers() {
   const ed = document.getElementById('editor');
   const ln = document.getElementById('line-numbers');
   if (!ed || !ln) return;
-  
   const lineCount = (ed.value.match(/\n/g) ||[]).length + 1;
   if (ln._lastCount === lineCount) return;
   ln._lastCount = lineCount;
   let s = '';
   for (let i = 1; i <= lineCount; i++) s += i + '\n';
   ln.textContent = s;
-  ln.scrollTop = ed.scrollTop;
+  // scrollTop 由 syncScroll 统一管理，这里不重复设置
 }
 
+// ── 滚动同步：专用 RAF，只做最轻量的位置同步，不触发高亮或行号重算 ──
+let _scrollRaf = null;
 function syncScroll() {
-  const ed  = document.getElementById('editor');
-  const pre = document.getElementById('highlight-pre');
-  const ln  = document.getElementById('line-numbers');
-  if (!ed || !pre) return;
-  pre.scrollTop  = ed.scrollTop;
-  pre.scrollLeft = ed.scrollLeft;
-  if (ln) ln.scrollTop = ed.scrollTop;
+  if (_scrollRaf) return;
+  _scrollRaf = requestAnimationFrame(() => {
+    _scrollRaf = null;
+    const ed  = document.getElementById('editor');
+    const pre = document.getElementById('highlight-pre');
+    const ln  = document.getElementById('line-numbers');
+    if (!ed || !pre) return;
+    pre.scrollTop  = ed.scrollTop;
+    pre.scrollLeft = ed.scrollLeft;
+    if (ln) ln.scrollTop = ed.scrollTop;
+  });
 }
 
 window.addEventListener('resize', syncScroll);
@@ -1688,7 +1969,7 @@ function initEditor(code) {
     debounceSaveState();
   });
 
-  ed.addEventListener('scroll', syncScroll);
+  ed.addEventListener('scroll', syncScroll, { passive: true });
 
   ed.addEventListener('keydown', (e) => {
     const s = e.target.selectionStart, end = e.target.selectionEnd;
@@ -2144,6 +2425,236 @@ function importFile(e) {
     e.target.value = '';
   };
   reader.readAsText(file);
+}
+
+// ══════════════════════════════════════════════
+// ── 功能一：运行历史 ──
+// ══════════════════════════════════════════════
+const MAX_HISTORY = 5;
+let _runHistory = [];    // [{html, lineCount, timestamp}]
+let _historyIdx = -1;    // 当前查看的位置，-1 = 最新
+
+function _saveOutputSnapshot() {
+  const el = document.getElementById('output-content');
+  const lc = _outputLineCount;
+  const snapshot = { html: el.innerHTML, lineCount: lc, ts: Date.now() };
+  _runHistory.push(snapshot);
+  if (_runHistory.length > MAX_HISTORY) _runHistory.shift();
+  _historyIdx = _runHistory.length - 1; // 指向最新
+  _updateHistoryUI();
+}
+
+function _updateHistoryUI() {
+  const nav = document.getElementById('history-nav');
+  const label = document.getElementById('history-label');
+  const prev = document.getElementById('hist-prev');
+  const next = document.getElementById('hist-next');
+  const n = _runHistory.length;
+  if (n <= 1) { nav.classList.remove('visible'); return; }
+  nav.classList.add('visible');
+  const cur = _historyIdx + 1;
+  label.textContent = `${cur}/${n}`;
+  prev.disabled = _historyIdx <= 0;
+  next.disabled = _historyIdx >= n - 1;
+}
+
+function navHistory(dir) {
+  const n = _runHistory.length;
+  const newIdx = Math.max(0, Math.min(n - 1, _historyIdx + dir));
+  if (newIdx === _historyIdx) return;
+  _historyIdx = newIdx;
+  const snap = _runHistory[_historyIdx];
+  const el = document.getElementById('output-content');
+  el.innerHTML = snap.html;
+  _outputLineCount = snap.lineCount;
+  const lc = document.getElementById('output-linecount');
+  if (lc) lc.textContent = snap.lineCount > 0 ? snap.lineCount + ' 行' : '';
+  _updateHistoryUI();
+  // 显示时间戳提示
+  const ago = Math.round((Date.now() - snap.ts) / 1000);
+  const agoStr = ago < 60 ? `${ago}秒前` : ago < 3600 ? `${Math.round(ago/60)}分钟前` : `${Math.round(ago/3600)}小时前`;
+  showToast(`查看第 ${_historyIdx+1} 次运行结果（${agoStr}）`);
+}
+
+// ══════════════════════════════════════════════
+// ── 功能二：代码格式化 (autopep8) ──
+// ══════════════════════════════════════════════
+let _autopep8Ready = false;
+let _autopep8Loading = false;
+
+async function formatCode() {
+  if (!pyodide) { showToast('Python 尚未就绪'); return; }
+  const ed = document.getElementById('editor');
+  if (!ed || !ed.value.trim()) { showToast('代码为空'); return; }
+
+  const btn = document.getElementById('format-btn');
+  const statusDot = document.getElementById('format-status');
+
+  // 首次使用时安装 autopep8
+  if (!_autopep8Ready) {
+    if (_autopep8Loading) { showToast('autopep8 正在安装中...'); return; }
+    _autopep8Loading = true;
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+    showToast('⏳ 正在安装 autopep8...');
+    try {
+      pyodide.globals.set('_fmt_pkg', 'autopep8');
+      await pyodide.runPythonAsync(`import micropip; await micropip.install(_fmt_pkg)`);
+      pyodide.globals.delete('_fmt_pkg');
+      _autopep8Ready = true;
+      statusDot.style.display = 'block';
+    } catch(e) {
+      showToast('autopep8 安装失败，请检查网络');
+      _autopep8Loading = false;
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+      return;
+    }
+    _autopep8Loading = false;
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+  }
+
+  // 执行格式化
+  const original = ed.value;
+  try {
+    btn.style.opacity = '0.6';
+    pyodide.globals.set('_fmt_code', original);
+    const formatted = await pyodide.runPythonAsync(
+      `import autopep8; autopep8.fix_code(_fmt_code, options={'aggressive': 1})`
+    );
+    pyodide.globals.delete('_fmt_code');
+    if (formatted === original) {
+      showToast('代码已是规范格式 ✓');
+    } else {
+      ed.value = formatted;
+      if (tabs[activeTab]) tabs[activeTab].code = formatted;
+      highlightCode();
+      debounceSaveState();
+      showToast('✓ 格式化完成');
+    }
+  } catch(e) {
+    showToast('格式化失败: ' + (e.message || e));
+  } finally {
+    btn.style.opacity = '';
+  }
+}
+
+// ══════════════════════════════════════════════
+// ── 功能三：变量检查器 ──
+// ══════════════════════════════════════════════
+let _varsPanelOpen = false;
+let _currentVars = [];
+
+async function copyVars(event) {
+  if (event) event.stopPropagation();
+  if (!_currentVars || _currentVars.length === 0) {
+    showToast('没有可复制的变量');
+    return;
+  }
+  let text = "=== PyRunner 变量运行状态 ===\n\n";
+  _currentVars.forEach(v => {
+    text += `${v.name} [${v.type}] = ${v.value}\n`;
+  });
+  const ok = await smartCopy(text);
+  if (ok) {
+    flashCopyBtn('copy-vars-btn');
+    showToast('已复制变量列表 ✓');
+  } else {
+    showToast('复制失败，请重试');
+  }
+}
+
+function toggleVarsPanel() {
+  _varsPanelOpen = !_varsPanelOpen;
+  const panel = document.getElementById('vars-panel');
+  panel.classList.toggle('open', _varsPanelOpen);
+}
+
+async function refreshVarsPanel() {
+  if (!pyodide) return;
+  const grid = document.getElementById('vars-grid');
+  const countEl = document.getElementById('vars-count');
+  try {
+    // 用 Python 扫描 __main__ 中的用户变量，返回 JSON
+    const result = await pyodide.runPythonAsync(`
+import __main__, json, types
+
+_SKIP_TYPES = (types.ModuleType, types.FunctionType, types.BuiltinFunctionType,
+               types.BuiltinMethodType, type, types.MethodType)
+_SKIP_PREFIXES = ('_', '__')
+
+def _fmt_val(v):
+    try:
+        import numpy as _np
+        if isinstance(v, _np.ndarray):
+            return f'shape={v.shape} dtype={v.dtype}'
+    except: pass
+    try:
+        import pandas as _pd
+        if isinstance(v, _pd.DataFrame): return f'{len(v)} 行 × {len(v.columns)} 列'
+        if isinstance(v, _pd.Series): return f'Series len={len(v)}'
+    except: pass
+    if isinstance(v, (list, tuple)):
+        return f'len={len(v)}'
+    if isinstance(v, dict):
+        return f'{len(v)} keys'
+    s = repr(v)
+    return s[:60] + '…' if len(s) > 60 else s
+
+def _type_label(v):
+    try:
+        import numpy as _np
+        if isinstance(v, _np.ndarray): return 'ndarray'
+    except: pass
+    try:
+        import pandas as _pd
+        if isinstance(v, _pd.DataFrame): return 'DataFrame'
+        if isinstance(v, _pd.Series): return 'Series'
+    except: pass
+    return type(v).__name__
+
+rows = []
+for k, v in vars(__main__).items():
+    if k.startswith('_'): continue
+    if isinstance(v, _SKIP_TYPES): continue
+    rows.append({'name': k, 'type': _type_label(v), 'value': _fmt_val(v)})
+
+json.dumps(rows[:40])
+`);
+
+    const vars = JSON.parse(result);
+    _currentVars = vars;
+    countEl.textContent = vars.length;
+    countEl.classList.toggle('visible', vars.length > 0);
+    
+    const copyBtn = document.getElementById('copy-vars-btn');
+    if (copyBtn) copyBtn.style.display = vars.length > 0 ? 'flex' : 'none';
+
+    if (vars.length === 0) {
+      grid.innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
+      return;
+    }
+
+    grid.innerHTML = vars.map(v => `
+      <div class="var-row">
+        <span class="var-name">${escHtml(v.name)}</span>
+        <span class="var-type">${escHtml(v.type)}</span>
+        <span class="var-value">${escHtml(v.value)}</span>
+      </div>`).join('');
+
+    // 首次有变量时自动展开面板
+    if (vars.length > 0 && !_varsPanelOpen) {
+      _varsPanelOpen = true;
+      document.getElementById('vars-panel').classList.add('open');
+    }
+  } catch(e) {
+    grid.innerHTML = '<div class="var-empty">无法读取变量</div>';
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Toast ──
