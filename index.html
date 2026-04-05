@@ -12,7 +12,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PyRunner">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<link rel="icon" type="image/png" href="./favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
@@ -769,29 +768,6 @@
     font-family: var(--sans);
   }
 
-  /* ── 运行历史导航 ── */
-  #history-nav {
-    display: none; align-items: center; gap: 4px;
-    margin-right: 4px;
-  }
-  #history-nav.visible { display: flex; }
-  .hist-btn {
-    width: 22px; height: 22px; border-radius: 5px;
-    border: 1px solid var(--border-md);
-    background: transparent; color: var(--text3);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; font-size: 11px;
-    transition: background 0.12s, color 0.12s, transform 0.12s cubic-bezier(0.34,1.56,0.64,1);
-    flex-shrink: 0;
-  }
-  .hist-btn:hover { background: var(--surface2); color: var(--text2); }
-  .hist-btn:active { transform: scale(0.88); }
-  .hist-btn:disabled { opacity: 0.3; pointer-events: none; }
-  #history-label {
-    font-size: 10px; font-weight: 600; color: var(--text3);
-    white-space: nowrap; padding: 0 2px;
-  }
-
   /* ── 变量检查器面板 ── */
   #vars-panel {
     border-top: 1px solid var(--border-md);
@@ -869,11 +845,12 @@
   }
 
   /* ── 格式化按钮 ── */
-  .format-btn-wrap { position: relative; flex-shrink: 0; }
+  .format-btn-wrap { position: relative; flex-shrink: 0; overflow: hidden; border-radius: var(--radius-xs); }
   #format-status {
-    position: absolute; top: -4px; right: -4px;
+    position: absolute; top: 2px; right: 2px;
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--green); display: none;
+    pointer-events: none;
     border: 1.5px solid var(--surface);
   }
   #stdin-overlay {
@@ -1005,16 +982,6 @@
         <div id="output-header">
           <span id="output-title">输出</span><span id="output-linecount" style="font-size:10px;color:var(--text3);margin-left:6px;font-weight:400;"></span>
           <div class="output-spacer"></div>
-          <!-- 运行历史导航 -->
-          <div id="history-nav">
-            <button class="hist-btn" id="hist-prev" onclick="navHistory(-1)" title="上一次运行">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
-            <span id="history-label">1/1</span>
-            <button class="hist-btn" id="hist-next" onclick="navHistory(1)" title="下一次运行">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M9 18l6-6-6-6"/></svg>
-            </button>
-          </div>
           <div class="output-action-btn" id="copy-output-btn" onclick="copyOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-right:3px;vertical-align:-1px;display:inline-block"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>复制</div>
           <div class="output-action-btn" onclick="clearOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-right:3px;vertical-align:-1px;display:inline-block"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>清空</div>
         </div>
@@ -1180,17 +1147,120 @@
 
 <script>
 // ── 初始代码（必须在 tabs 之前声明，避免 let 的 TDZ 问题）──
-const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
+const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.12 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
 
-// ── Modular Core（单文件模块化架构）──
+// ── Modern Modular Core（事件驱动 + 依赖注入）──
+class EventBus {
+  constructor() { this.listeners = new Map(); }
+  on(event, handler) {
+    if (!this.listeners.has(event)) this.listeners.set(event, new Set());
+    this.listeners.get(event).add(handler);
+    return () => this.off(event, handler);
+  }
+  off(event, handler) {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    set.delete(handler);
+    if (set.size === 0) this.listeners.delete(event);
+  }
+  emit(event, payload) {
+    const set = this.listeners.get(event);
+    if (!set) return;
+    set.forEach((handler) => {
+      try { handler(payload); } catch (err) { console.warn(`[EventBus] ${event} failed:`, err); }
+    });
+  }
+}
+
+class StorageManager {
+  constructor(eventBus, dom) {
+    this.eventBus = eventBus;
+    this.dom = dom;
+    this.saveTimer = null;
+  }
+  loadTabs() {
+    try {
+      const saved = localStorage.getItem('pyrunner_tabs');
+      if (!saved) return null;
+      return { tabs: JSON.parse(saved), active: parseInt(localStorage.getItem('pyrunner_active') || '0', 10) };
+    } catch (_) {
+      return null;
+    }
+  }
+  saveTabs(nextTabs, nextActiveTab) {
+    try {
+      const editorEl = this.dom.byId('editor');
+      if (editorEl && nextTabs[nextActiveTab]) nextTabs[nextActiveTab].code = editorEl.value;
+      localStorage.setItem('pyrunner_tabs', JSON.stringify(nextTabs));
+      localStorage.setItem('pyrunner_active', String(nextActiveTab));
+      this.eventBus.emit('storage:tabs:saved', { total: nextTabs.length, activeTab: nextActiveTab });
+    } catch (_) {}
+  }
+  debounceSave(nextTabs, nextActiveTab, delay = 1500) {
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.saveTabs(nextTabs, nextActiveTab), delay);
+  }
+}
+
+class SettingsManager {
+  constructor(eventBus, defaults) {
+    this.eventBus = eventBus;
+    this.defaults = defaults;
+  }
+  load() {
+    try {
+      return Object.assign({}, this.defaults, JSON.parse(localStorage.getItem('pyrunner_settings') || '{}'));
+    } catch (_) {
+      return { ...this.defaults };
+    }
+  }
+  save(nextSettings) {
+    try {
+      localStorage.setItem('pyrunner_settings', JSON.stringify(nextSettings));
+      this.eventBus.emit('settings:changed', { ...nextSettings });
+    } catch (_) {}
+  }
+}
+
+class TabManager {
+  constructor(eventBus, storageManager, initialCode) {
+    this.eventBus = eventBus;
+    this.storageManager = storageManager;
+    const saved = this.storageManager.loadTabs();
+    this.tabs = saved ? saved.tabs : [{ name: 'main.py', code: initialCode }];
+    this.activeTab = saved ? Math.min(saved.active, this.tabs.length - 1) : 0;
+  }
+  getState() { return { tabs: this.tabs, activeTab: this.activeTab }; }
+  sync(tabs, activeTab) { this.tabs = tabs; this.activeTab = activeTab; }
+  saveNow(tabs, activeTab) { this.sync(tabs, activeTab); this.storageManager.saveTabs(this.tabs, this.activeTab); }
+  saveDebounced(tabs, activeTab, delay = 1500) { this.sync(tabs, activeTab); this.storageManager.debounceSave(this.tabs, this.activeTab, delay); }
+}
+
+class EditorEngine {
+  constructor(eventBus, tabManager) {
+    this.eventBus = eventBus;
+    this.tabManager = tabManager;
+  }
+  trackEdit(tabIndex, code) {
+    const { tabs, activeTab } = this.tabManager.getState();
+    if (tabs[tabIndex]) tabs[tabIndex].code = code;
+    this.tabManager.saveDebounced(tabs, activeTab);
+    this.eventBus.emit('editor:changed', { tabIndex, chars: code.length });
+  }
+}
+
+class PyodideRunner {
+  constructor(eventBus) {
+    this.eventBus = eventBus;
+    this.instance = null;
+  }
+  bind(instance) {
+    this.instance = instance;
+    this.eventBus.emit('pyodide:ready');
+  }
+}
+
 const AppCore = {
-  state: {
-    pyodide: null,
-    activeTab: 0,
-    isRunning: false,
-    inputResolve: null,
-    saveTimer: null,
-  },
   constants: {
     defaultSettings: {
       autoIndent: true,
@@ -1200,85 +1270,47 @@ const AppCore = {
       wordWrap: false,
     },
   },
-  dom: {
-    byId: (id) => document.getElementById(id),
-  },
-  modules: {},
+  dom: { byId: (id) => document.getElementById(id) },
 };
+AppCore.eventBus = new EventBus();
+AppCore.storageManager = new StorageManager(AppCore.eventBus, AppCore.dom);
+AppCore.settingsManager = new SettingsManager(AppCore.eventBus, AppCore.constants.defaultSettings);
+AppCore.tabManager = new TabManager(AppCore.eventBus, AppCore.storageManager, _INITIAL_CODE);
+AppCore.editorEngine = new EditorEngine(AppCore.eventBus, AppCore.tabManager);
+AppCore.pyodideRunner = new PyodideRunner(AppCore.eventBus);
+AppCore.state = { pyodide: null, isRunning: false, inputResolve: null };
 
-AppCore.modules.settings = {
-  load() {
-    try {
-      return Object.assign(
-        {},
-        AppCore.constants.defaultSettings,
-        JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')
-      );
-    } catch (_) {
-      return { ...AppCore.constants.defaultSettings };
-    }
-  },
-  save(nextSettings) {
-    try { localStorage.setItem('pyrunner_settings', JSON.stringify(nextSettings)); } catch (_) {}
-  },
-};
-
-AppCore.modules.persistence = {
-  saveTabs(nextTabs, nextActiveTab) {
-    try {
-      const editorEl = AppCore.dom.byId('editor');
-      if (editorEl && nextTabs[nextActiveTab]) nextTabs[nextActiveTab].code = editorEl.value;
-      localStorage.setItem('pyrunner_tabs', JSON.stringify(nextTabs));
-      localStorage.setItem('pyrunner_active', String(nextActiveTab));
-    } catch (_) {}
-  },
-  loadTabs() {
-    try {
-      const saved = localStorage.getItem('pyrunner_tabs');
-      if (!saved) return null;
-      return { tabs: JSON.parse(saved), active: parseInt(localStorage.getItem('pyrunner_active') || '0', 10) };
-    } catch (_) {
-      return null;
-    }
-  },
-  debounceSave(nextTabs, nextActiveTab, delay = 1500) {
-    clearTimeout(AppCore.state.saveTimer);
-    AppCore.state.saveTimer = setTimeout(
-      () => AppCore.modules.persistence.saveTabs(nextTabs, nextActiveTab),
-      delay
-    );
-  },
-};
-
-// 为现有代码保留兼容变量（逐步迁移到 AppCore）
+// 为现有代码保留兼容变量（重构期间的 API 兼容层）
 let pyodide = AppCore.state.pyodide;
-let activeTab = AppCore.state.activeTab;
+let activeTab = AppCore.tabManager.activeTab;
 let isRunning = AppCore.state.isRunning;
 let inputResolve = AppCore.state.inputResolve;
-let settings = AppCore.modules.settings.load();
+let settings = AppCore.settingsManager.load();
 
 function saveSettings() {
-  AppCore.modules.settings.save(settings);
+  AppCore.settingsManager.save(settings);
 }
 
 function saveState() {
-  AppCore.modules.persistence.saveTabs(tabs, activeTab);
+  AppCore.tabManager.saveNow(tabs, activeTab);
 }
 
 function loadState() {
-  return AppCore.modules.persistence.loadTabs();
+  return AppCore.storageManager.loadTabs();
 }
 
-const _savedState = loadState();
-let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: _INITIAL_CODE }];
-if (_savedState) {
-  activeTab = Math.min(_savedState.active, tabs.length - 1);
-  AppCore.state.activeTab = activeTab;
-}
+const _savedState = AppCore.tabManager.getState();
+let tabs = _savedState.tabs;
+activeTab = _savedState.activeTab;
 
 function debounceSaveState() {
-  AppCore.modules.persistence.debounceSave(tabs, activeTab);
+  AppCore.tabManager.saveDebounced(tabs, activeTab);
 }
+
+// 事件驱动协作：模块间不直接耦合
+AppCore.eventBus.on('tab:added', () => debounceSaveState());
+AppCore.eventBus.on('tab:removed', () => debounceSaveState());
+AppCore.eventBus.on('settings:changed', () => showToast('设置已保存'));
 
 // ── Pyodide init ──
 async function initPyodide() {
@@ -1305,6 +1337,7 @@ async function initPyodide() {
 
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/' });
     AppCore.state.pyodide = pyodide;
+    AppCore.pyodideRunner.bind(pyodide);
     clearInterval(fakeInterval);
 
     const pkgGroups =[
@@ -1339,14 +1372,14 @@ fm.fontManager.ttflist.insert(0, fe)
 mpl.rcParams['font.family'] = 'Noto Sans SC'
 mpl.rcParams['axes.unicode_minus'] = False
 `);
-      showToast('Python 3.11 已就绪，中文字体已加载 ✓');
+      showToast('Python 3.12 已就绪，中文字体已加载 ✓');
     } catch(fontErr) {
       console.warn('中文字体加载失败，降级:', fontErr);
       pyodide.runPython(`
 import matplotlib as mpl
 mpl.rcParams['axes.unicode_minus'] = False
 `);
-      showToast('Python 3.11 已就绪（中文字体加载失败）');
+      showToast('Python 3.12 已就绪（中文字体加载失败）');
     }
 
 
@@ -1359,6 +1392,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
       refreshInstalledPkgs(); // 初始加载完成后获取列表
       initOutputScrollListener(); // 启动输出智能滚动监听
+      ensureOutputInteractionDelegate();
     }, 300);
   } catch(e) {
     setStatus('error', '加载失败');
@@ -1410,6 +1444,7 @@ async function runCode() {
   if (!code.trim()) { showToast('请输入代码'); return; }
   isRunning = true;
   AppCore.state.isRunning = true;
+  AppCore.eventBus.emit('runner:started', { activeTab });
   _stopRequested = false;
   _userScrolledUp = false; // 每次新运行重置，自动跟随到底部
   setRunBtn(true);
@@ -1770,25 +1805,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;display:block;cursor:zoom-in;';
       img.onerror = () => img.remove();
       img.src = `data:image/${mime};base64,${b64}`;
-      img.onclick = () => {
-        const ov = document.createElement('div');
-        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
-        const bi = document.createElement('img');
-        bi.src = img.src;
-        bi.style.cssText = 'max-width:100%;max-height:90dvh;border-radius:10px;';
-        const tip = document.createElement('div');
-        tip.textContent = '点击任意处或按 Esc 关闭';
-        tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;white-space:nowrap;';
-        ov.append(bi, tip);
-        const closeOv = () => {
-          ov.remove();
-          document.removeEventListener('keydown', escHandler);
-        };
-        const escHandler = (ev) => { if (ev.key === 'Escape') closeOv(); };
-        ov.onclick = closeOv;
-        document.addEventListener('keydown', escHandler);
-        document.body.appendChild(ov);
-      };
+      img.dataset.previewable = '1';
       const wrap2 = document.createElement('span');
       wrap2.className = 'out-line image-out';
       wrap2.appendChild(img);
@@ -1800,8 +1817,7 @@ mpl.rcParams['axes.unicode_minus'] = False
     const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
     appendOutput(`\n✓ 运行完成，耗时 ${elapsed}s`, 'success');
     setStatus('ready', '就绪');
-    // 保存运行历史快照
-    _saveOutputSnapshot();
+    AppCore.eventBus.emit('runner:completed', { elapsed: Number(elapsed) });
     // 刷新变量检查器
     refreshVarsPanel();
   } catch(e) {
@@ -1811,6 +1827,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       if (inputResolve) { inputResolve(''); inputResolve = null; AppCore.state.inputResolve = null; }
       appendOutput('\n⏹ 已手动停止执行', 'info');
       setStatus('ready', '就绪');
+      AppCore.eventBus.emit('runner:stopped');
     } else {
       const raw = e.message || String(e);
       const lines = raw.split('\n');
@@ -1823,11 +1840,13 @@ mpl.rcParams['axes.unicode_minus'] = False
       const lineNo = lineMatches.length > 0 ? parseInt(lineMatches[lineMatches.length - 1][1]) : 0;
       if (lineNo > 0) highlightErrorLine(lineNo);
       setStatus('error', '出错');
+      AppCore.eventBus.emit('runner:failed', { message: raw });
       setTimeout(() => { setStatus('ready', '就绪'); clearErrorHighlight(); }, 4000);
     }
   }
   isRunning = false;
   AppCore.state.isRunning = false;
+  AppCore.eventBus.emit('runner:finished');
   _stopRequested = false;
   setRunBtn(false);
   // 解锁编辑器
@@ -1840,6 +1859,37 @@ mpl.rcParams['axes.unicode_minus'] = False
 let _outputRaf = null;
 let _outputLineCount = 0; // 计数器替代 querySelectorAll，避免密集输出时频繁 DOM 查询
 let _userScrolledUp = false; // 用户主动上滚时暂停自动跟随
+
+function openImagePreview(src) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const bi = document.createElement('img');
+  bi.src = src;
+  bi.style.cssText = 'max-width:100%;max-height:90dvh;border-radius:10px;';
+  const tip = document.createElement('div');
+  tip.textContent = '点击任意处或按 Esc 关闭';
+  tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;white-space:nowrap;';
+  ov.append(bi, tip);
+  const closeOv = () => {
+    ov.remove();
+    document.removeEventListener('keydown', escHandler);
+  };
+  const escHandler = (ev) => { if (ev.key === 'Escape') closeOv(); };
+  ov.onclick = closeOv;
+  document.addEventListener('keydown', escHandler);
+  document.body.appendChild(ov);
+}
+
+function ensureOutputInteractionDelegate() {
+  const root = document.getElementById('output-content');
+  if (!root || root._interactionBound) return;
+  root._interactionBound = true;
+  root.addEventListener('click', (e) => {
+    const img = e.target.closest('img[data-previewable="1"]');
+    if (!img || !root.contains(img)) return;
+    openImagePreview(img.src);
+  });
+}
 
 // 监听用户在输出区域的滚动行为
 function initOutputScrollListener() {
@@ -1881,10 +1931,6 @@ function clearOutput() {
   document.getElementById('output-content').innerHTML = '';
   _outputLineCount = 0;
   _userScrolledUp = false;
-  // 清空输出时同步重置历史和变量面板
-  _runHistory = [];
-  _historyIdx = -1;
-  document.getElementById('history-nav').classList.remove('visible');
   document.getElementById('vars-grid').innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
   document.getElementById('vars-count').classList.remove('visible');
   document.getElementById('vars-panel').classList.remove('has-vars', 'open');
@@ -2048,7 +2094,7 @@ function insertText(text) {
   ed.setSelectionRange(cur, cur);
   ed.focus();
   highlightCode();
-  if (tabs[activeTab]) tabs[activeTab].code = ed.value;
+  AppCore.editorEngine.trackEdit(activeTab, ed.value);
 }
 
 function undoCode() {
@@ -2065,9 +2111,8 @@ function initEditor(code) {
   ed.value = code || _INITIAL_CODE;
 
   ed.addEventListener('input', () => {
-    if (tabs[activeTab]) tabs[activeTab].code = ed.value;
+    AppCore.editorEngine.trackEdit(activeTab, ed.value);
     highlightCode();
-    debounceSaveState();
   });
 
   ed.addEventListener('scroll', syncScroll, { passive: true });
@@ -2093,7 +2138,7 @@ function initEditor(code) {
         ed.value = ed.value.substring(0,s)+'    '+ed.value.substring(end);
         ed.setSelectionRange(s+4, s+4);
       }
-      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      AppCore.editorEngine.trackEdit(activeTab, ed.value);
       highlightCode(); return;
     }
 
@@ -2102,7 +2147,7 @@ function initEditor(code) {
       e.preventDefault();
       ed.value = ed.value.substring(0,s) + e.key + pairs[e.key] + ed.value.substring(end);
       ed.setSelectionRange(s+1, s+1);
-      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      AppCore.editorEngine.trackEdit(activeTab, ed.value);
       highlightCode(); return;
     }
     if ([")", "]", "}"].includes(e.key) && ed.value[s] === e.key) {
@@ -2114,7 +2159,7 @@ function initEditor(code) {
         e.preventDefault();
         ed.value = ed.value.substring(0,s-1) + ed.value.substring(s+1);
         ed.setSelectionRange(s-1, s-1);
-        if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+        AppCore.editorEngine.trackEdit(activeTab, ed.value);
         highlightCode(); return;
       }
     }
@@ -2127,7 +2172,7 @@ function initEditor(code) {
       ed.value = ed.value.substring(0,s) + '\n' + indent + extra + ed.value.substring(end);
       const newPos = s + 1 + indent.length + extra.length;
       ed.setSelectionRange(newPos, newPos);
-      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      AppCore.editorEngine.trackEdit(activeTab, ed.value);
       highlightCode(); return;
     }
   });
@@ -2156,6 +2201,7 @@ function addTab(name, code) {
     name: name || 'script' + nextNum() + '.py', 
     code: code || '# 新文件\nprint("Hello, World!")\n' 
   });
+  AppCore.eventBus.emit('tab:added', { total: tabs.length, name: tabs[tabs.length - 1].name });
   switchTab(tabs.length - 1);
   renderTabs();
 }
@@ -2164,7 +2210,8 @@ function switchTab(idx) {
   const _edT = document.getElementById('editor');
   if(_edT) tabs[activeTab].code = _edT.value;
   activeTab = idx;
-  AppCore.state.activeTab = activeTab;
+  AppCore.tabManager.sync(tabs, activeTab);
+  AppCore.eventBus.emit('tab:switched', { activeTab });
   clearErrorHighlight(); // 切换 Tab 时清除旧 Tab 残留的错误高亮
   if(_edT){ _edT.value = tabs[idx].code || ''; highlightCode(); }
   renderTabs();
@@ -2175,7 +2222,8 @@ function removeTab(e, idx) {
   if (tabs.length === 1) { showToast('至少保留一个标签页'); return; }
   tabs.splice(idx, 1);
   activeTab = Math.min(activeTab, tabs.length - 1);
-  AppCore.state.activeTab = activeTab;
+  AppCore.tabManager.sync(tabs, activeTab);
+  AppCore.eventBus.emit('tab:removed', { total: tabs.length, activeTab });
   const _edR = document.getElementById('editor'); if(_edR){ _edR.value = tabs[activeTab].code || ''; highlightCode(); }
   renderTabs();
 }
@@ -2455,17 +2503,31 @@ async function refreshInstalledPkgs() {
   if (!pyodide) return;
 
   try {
-    // 获取 Python 环境中已载入的核心库和通过 micropip 安装的库
-    const pkgs = await pyodide.runPythonAsync(`
-      import sys, micropip
-      # 获取已安装的库名列表并去重排序
-      installed = sorted(list(set([p.name for p in micropip.list()] + list(sys.modules.keys()))))
-      # 过滤掉内部私有模块和过于琐碎的子模块
-      filtered =[p for p in installed if not p.startswith('_') and '.' not in p and len(p) > 1]
-      ','.join(filtered)
-    `);
-    
-    const pkgArray = pkgs.split(',').filter(p => p);
+    // 1) Pyodide 已加载包（最可靠，不依赖 Python 侧 API 细节）
+    const loadedPkgs = Object.keys(pyodide.loadedPackages || {});
+
+    // 2) 补充 micropip 安装包（容错，失败不影响主流程）
+    let micropipPkgs = [];
+    try {
+      const micropipJson = await pyodide.runPythonAsync(`
+import json
+names = []
+try:
+    import micropip
+    for item in micropip.list():
+        n = getattr(item, 'name', None)
+        if n: names.append(str(n))
+except Exception:
+    pass
+json.dumps(names)
+      `);
+      micropipPkgs = JSON.parse(micropipJson || '[]');
+    } catch (_) {}
+
+    const pkgArray = [...new Set([...loadedPkgs, ...micropipPkgs])]
+      .filter(p => p && !String(p).startsWith('_'))
+      .sort((a, b) => String(a).localeCompare(String(b)));
+
     listEl.innerHTML = pkgArray.map(p => `<span class="pkg-tag">${p}</span>`).join('');
     if (pkgArray.length === 0) listEl.innerHTML = '<span style="font-size:10px;color:var(--text3)">暂无已安装的第三方库</span>';
   } catch (err) {
@@ -2532,56 +2594,7 @@ function importFile(e) {
 }
 
 // ══════════════════════════════════════════════
-// ── 功能一：运行历史 ──
-// ══════════════════════════════════════════════
-const MAX_HISTORY = 5;
-let _runHistory = [];    // [{html, lineCount, timestamp}]
-let _historyIdx = -1;    // 当前查看的位置，-1 = 最新
-
-function _saveOutputSnapshot() {
-  const el = document.getElementById('output-content');
-  const lc = _outputLineCount;
-  const snapshot = { html: el.innerHTML, lineCount: lc, ts: Date.now() };
-  _runHistory.push(snapshot);
-  if (_runHistory.length > MAX_HISTORY) _runHistory.shift();
-  _historyIdx = _runHistory.length - 1; // 指向最新
-  _updateHistoryUI();
-}
-
-function _updateHistoryUI() {
-  const nav = document.getElementById('history-nav');
-  const label = document.getElementById('history-label');
-  const prev = document.getElementById('hist-prev');
-  const next = document.getElementById('hist-next');
-  const n = _runHistory.length;
-  if (n <= 1) { nav.classList.remove('visible'); return; }
-  nav.classList.add('visible');
-  const cur = _historyIdx + 1;
-  label.textContent = `${cur}/${n}`;
-  prev.disabled = _historyIdx <= 0;
-  next.disabled = _historyIdx >= n - 1;
-}
-
-function navHistory(dir) {
-  const n = _runHistory.length;
-  const newIdx = Math.max(0, Math.min(n - 1, _historyIdx + dir));
-  if (newIdx === _historyIdx) return;
-  _historyIdx = newIdx;
-  const snap = _runHistory[_historyIdx];
-  const el = document.getElementById('output-content');
-  el.innerHTML = snap.html;
-  _outputLineCount = snap.lineCount;
-  const lc = document.getElementById('output-linecount');
-  if (lc) lc.textContent = snap.lineCount > 0 ? snap.lineCount + ' 行' : '';
-  _updateHistoryUI();
-  // 显示时间戳提示
-  const ago = Math.round((Date.now() - snap.ts) / 1000);
-  const agoStr = ago < 60 ? `${ago}秒前` : ago < 3600 ? `${Math.round(ago/60)}分钟前` : `${Math.round(ago/3600)}小时前`;
-  showToast(`查看第 ${_historyIdx+1} 次运行结果（${agoStr}）`);
-}
-
-// ══════════════════════════════════════════════
-// ── 功能二：代码格式化 (autopep8) ──
+// ── 功能一：代码格式化 (autopep8) ──
 // ══════════════════════════════════════════════
 let _autopep8Ready = false;
 let _autopep8Loading = false;
@@ -2682,7 +2695,8 @@ async function refreshVarsPanel() {
   try {
     // 用 Python 扫描 __main__ 中的用户变量，返回 JSON
     const result = await pyodide.runPythonAsync(`
-import __main__, json, types
+import __main__, json, types, warnings, sys
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 _SKIP_TYPES = (types.ModuleType, types.FunctionType, types.BuiltinFunctionType,
                types.BuiltinMethodType, type, types.MethodType)
@@ -2694,11 +2708,12 @@ def _fmt_val(v):
         if isinstance(v, _np.ndarray):
             return f'shape={v.shape} dtype={v.dtype}'
     except: pass
-    try:
-        import pandas as _pd
-        if isinstance(v, _pd.DataFrame): return f'{len(v)} 行 × {len(v.columns)} 列'
-        if isinstance(v, _pd.Series): return f'Series len={len(v)}'
-    except: pass
+    _pd = sys.modules.get('pandas')
+    if _pd is not None:
+        try:
+            if isinstance(v, _pd.DataFrame): return f'{len(v)} 行 × {len(v.columns)} 列'
+            if isinstance(v, _pd.Series): return f'Series len={len(v)}'
+        except: pass
     if isinstance(v, (list, tuple)):
         return f'len={len(v)}'
     if isinstance(v, dict):
@@ -2711,15 +2726,22 @@ def _type_label(v):
         import numpy as _np
         if isinstance(v, _np.ndarray): return 'ndarray'
     except: pass
-    try:
-        import pandas as _pd
-        if isinstance(v, _pd.DataFrame): return 'DataFrame'
-        if isinstance(v, _pd.Series): return 'Series'
-    except: pass
+    _pd = sys.modules.get('pandas')
+    if _pd is not None:
+        try:
+            if isinstance(v, _pd.DataFrame): return 'DataFrame'
+            if isinstance(v, _pd.Series): return 'Series'
+        except: pass
     return type(v).__name__
 
 rows = []
-for k, v in vars(__main__).items():
+for _ in range(4):
+    try:
+        _items = list(__main__.__dict__.copy().items())
+        break
+    except RuntimeError:
+        _items = []
+for k, v in _items:
     if k.startswith('_'): continue
     if isinstance(v, _SKIP_TYPES): continue
     rows.append({'name': k, 'type': _type_label(v), 'value': _fmt_val(v)})
@@ -2891,19 +2913,29 @@ initPyodide();
 <script>
 // 页面关闭时强制立即保存（绕过 debounce）
 window.addEventListener('beforeunload', () => {
-  clearTimeout(AppCore.state.saveTimer);
+  clearTimeout(AppCore.storageManager.saveTimer);
   saveState();
 });
 
-AppCore.modules.pwa = (() => {
+AppCore.pwaManager = (() => {
   let deferredPrompt = null;
   const installBtn = () => document.getElementById('pwa-install-btn');
 
   const registerServiceWorker = () => {
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register('./sw.js')
-      .then(r => console.log('[SW] registered:', r.scope))
+      .then(async (r) => {
+        console.log('[SW] registered:', r.scope);
+        try { await r.update(); } catch (_) {}
+      })
       .catch(e => console.warn('[SW] register failed:', e));
+
+    let refreshed = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshed) return;
+      refreshed = true;
+      window.location.reload();
+    });
   };
 
   const bindInstallEvents = () => {
@@ -2944,10 +2976,10 @@ AppCore.modules.pwa = (() => {
 })();
 
 function installPWA() {
-  AppCore.modules.pwa.install();
+  AppCore.pwaManager.install();
 }
 
-AppCore.modules.pwa.init();
+AppCore.pwaManager.init();
 </script>
 </body>
 </html>
