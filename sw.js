@@ -1,7 +1,7 @@
 // PyRunner Service Worker
 // 缓存策略：Shell 文件强缓存，Pyodide/CDN 资源网络优先
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 
 // 需要预缓存的本地文件（App Shell）
 const SHELL_CACHE = `pyrunner-shell-${VERSION}`;
@@ -49,6 +49,12 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+const isHtmlRequest = (request, url) =>
+  request.mode === 'navigate' ||
+  (request.destination === 'document') ||
+  url.pathname === '/' ||
+  url.pathname.endsWith('/index.html');
+
 // ── Fetch：拦截请求 ──
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
@@ -56,8 +62,22 @@ self.addEventListener('fetch', (e) => {
   // 非 GET 请求直接放行
   if (e.request.method !== 'GET') return;
 
-  // App Shell：缓存优先（本地文件）
+  // App Shell:
+  // - HTML/导航：网络优先，避免发布后看到旧页面
+  // - 其他本地静态资源：缓存优先
   if (url.origin === self.location.origin) {
+    if (isHtmlRequest(e.request, url)) {
+      e.respondWith(
+        fetch(e.request).then(resp => {
+          if (resp && resp.ok) {
+            caches.open(SHELL_CACHE).then(c => c.put(e.request, resp.clone()));
+          }
+          return resp;
+        }).catch(() => caches.match(e.request).then(cached => cached || new Response('离线中', { status: 503 })))
+      );
+      return;
+    }
+
     e.respondWith(
       caches.match(e.request).then(cached => {
         if (cached) return cached;

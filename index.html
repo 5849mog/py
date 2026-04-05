@@ -2506,45 +2506,31 @@ async function refreshInstalledPkgs() {
   if (!pyodide) return;
 
   try {
-    // 获取 Python 环境中可识别的安装包（优先 importlib.metadata，兼容 micropip）
-    const pkgsJson = await pyodide.runPythonAsync(`
-import json, sys
+    // 1) Pyodide 已加载包（最可靠，不依赖 Python 侧 API 细节）
+    const loadedPkgs = Object.keys(pyodide.loadedPackages || {});
 
-installed = set()
-
-try:
-    import importlib.metadata as _md
-    for dist in _md.distributions():
-        try:
-            name = (dist.metadata.get('Name') or '').strip() or (dist.name or '').strip()
-            if name:
-                installed.add(name)
-        except Exception:
-            pass
-except Exception:
-    pass
-
+    // 2) 补充 micropip 安装包（容错，失败不影响主流程）
+    let micropipPkgs = [];
+    try {
+      const micropipJson = await pyodide.runPythonAsync(`
+import json
+names = []
 try:
     import micropip
     for item in micropip.list():
-        name = getattr(item, 'name', None)
-        if name:
-            installed.add(str(name))
+        n = getattr(item, 'name', None)
+        if n: names.append(str(n))
 except Exception:
     pass
+json.dumps(names)
+      `);
+      micropipPkgs = JSON.parse(micropipJson || '[]');
+    } catch (_) {}
 
-for m in list(sys.modules.keys()):
-    if m and not m.startswith('_') and '.' not in m:
-        installed.add(m)
+    const pkgArray = [...new Set([...loadedPkgs, ...micropipPkgs])]
+      .filter(p => p && !String(p).startsWith('_'))
+      .sort((a, b) => String(a).localeCompare(String(b)));
 
-filtered = sorted(
-    p for p in installed
-    if p and not p.startswith('_') and '.' not in p and len(p) > 1
-)
-json.dumps(filtered)
-    `);
-
-    const pkgArray = JSON.parse(pkgsJson || '[]');
     listEl.innerHTML = pkgArray.map(p => `<span class="pkg-tag">${p}</span>`).join('');
     if (pkgArray.length === 0) listEl.innerHTML = '<span style="font-size:10px;color:var(--text3)">暂无已安装的第三方库</span>';
   } catch (err) {
@@ -2941,8 +2927,18 @@ AppCore.pwaManager = (() => {
   const registerServiceWorker = () => {
     if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register('./sw.js')
-      .then(r => console.log('[SW] registered:', r.scope))
+      .then(async (r) => {
+        console.log('[SW] registered:', r.scope);
+        try { await r.update(); } catch (_) {}
+      })
       .catch(e => console.warn('[SW] register failed:', e));
+
+    let refreshed = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshed) return;
+      refreshed = true;
+      window.location.reload();
+    });
   };
 
   const bindInstallEvents = () => {
