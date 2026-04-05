@@ -12,7 +12,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="PyRunner">
 <link rel="apple-touch-icon" href="./icons/icon-192.png">
-<link rel="icon" type="image/png" href="./favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"></script>
@@ -869,11 +868,12 @@
   }
 
   /* ── 格式化按钮 ── */
-  .format-btn-wrap { position: relative; flex-shrink: 0; }
+  .format-btn-wrap { position: relative; flex-shrink: 0; overflow: hidden; border-radius: var(--radius-xs); }
   #format-status {
-    position: absolute; top: -4px; right: -4px;
+    position: absolute; top: 2px; right: 2px;
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--green); display: none;
+    pointer-events: none;
     border: 1.5px solid var(--surface);
   }
   #stdin-overlay {
@@ -1180,7 +1180,7 @@
 
 <script>
 // ── 初始代码（必须在 tabs 之前声明，避免 let 的 TDZ 问题）──
-const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
+const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.12 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
 
 // ── Modern Modular Core（事件驱动 + 依赖注入）──
 class EventBus {
@@ -1405,14 +1405,14 @@ fm.fontManager.ttflist.insert(0, fe)
 mpl.rcParams['font.family'] = 'Noto Sans SC'
 mpl.rcParams['axes.unicode_minus'] = False
 `);
-      showToast('Python 3.11 已就绪，中文字体已加载 ✓');
+      showToast('Python 3.12 已就绪，中文字体已加载 ✓');
     } catch(fontErr) {
       console.warn('中文字体加载失败，降级:', fontErr);
       pyodide.runPython(`
 import matplotlib as mpl
 mpl.rcParams['axes.unicode_minus'] = False
 `);
-      showToast('Python 3.11 已就绪（中文字体加载失败）');
+      showToast('Python 3.12 已就绪（中文字体加载失败）');
     }
 
 
@@ -1481,7 +1481,7 @@ async function runCode() {
   _userScrolledUp = false; // 每次新运行重置，自动跟随到底部
   setRunBtn(true);
   setStatus('loading', '运行中');
-  if (settings.clearBeforeRun) clearOutput();
+  if (settings.clearBeforeRun) clearOutput({ resetHistory: false });
 
   // 运行期间锁定编辑器，防止用户误以为可以实时修改
   const _edLock = document.getElementById('editor');
@@ -1948,18 +1948,22 @@ function appendOutput(text, cls) {
   trimOutputIfNeeded();
 }
 
-function clearOutput() {
+function clearOutput(options = {}) {
+  const { resetHistory = true, resetVars = true } = options;
   document.getElementById('output-content').innerHTML = '';
   _outputLineCount = 0;
   _userScrolledUp = false;
-  // 清空输出时同步重置历史和变量面板
-  _runHistory = [];
-  _historyIdx = -1;
-  document.getElementById('history-nav').classList.remove('visible');
-  document.getElementById('vars-grid').innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
-  document.getElementById('vars-count').classList.remove('visible');
-  document.getElementById('vars-panel').classList.remove('has-vars', 'open');
-  _varsPanelOpen = false;
+  if (resetHistory) {
+    _runHistory = [];
+    _historyIdx = -1;
+    document.getElementById('history-nav').classList.remove('visible');
+  }
+  if (resetVars) {
+    document.getElementById('vars-grid').innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
+    document.getElementById('vars-count').classList.remove('visible');
+    document.getElementById('vars-panel').classList.remove('has-vars', 'open');
+    _varsPanelOpen = false;
+  }
   const lc = document.getElementById('output-linecount'); if(lc) lc.textContent='';
 }
 
@@ -2627,7 +2631,7 @@ function _updateHistoryUI() {
   const prev = document.getElementById('hist-prev');
   const next = document.getElementById('hist-next');
   const n = _runHistory.length;
-  if (n <= 1) { nav.classList.remove('visible'); return; }
+  if (n === 0) { nav.classList.remove('visible'); return; }
   nav.classList.add('visible');
   const cur = _historyIdx + 1;
   label.textContent = `${cur}/${n}`;
@@ -2637,6 +2641,7 @@ function _updateHistoryUI() {
 
 function navHistory(dir) {
   const n = _runHistory.length;
+  if (n === 0) return;
   const newIdx = Math.max(0, Math.min(n - 1, _historyIdx + dir));
   if (newIdx === _historyIdx) return;
   _historyIdx = newIdx;
