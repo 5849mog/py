@@ -2797,7 +2797,7 @@ def _type_label(v):
     return type(v).__name__
 
 rows = []
-for k, v in vars(__main__).items():
+for k, v in list(dict(vars(__main__)).items()):
     if k.startswith('_'): continue
     if isinstance(v, _SKIP_TYPES): continue
     rows.append({'name': k, 'type': _type_label(v), 'value': _fmt_val(v)})
