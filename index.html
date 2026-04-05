@@ -1182,53 +1182,102 @@
 // ── 初始代码（必须在 tabs 之前声明，避免 let 的 TDZ 问题）──
 const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
 
-// ── State ──
-let pyodide = null;
-let activeTab = 0;
-let isRunning = false;
-let inputResolve = null;
-const _defSettings = { 
-  autoIndent: true, 
-  clearBeforeRun: true, 
-  showLines: true, 
-  fontSize: 13,
-  wordWrap: false 
+// ── Modular Core（单文件模块化架构）──
+const AppCore = {
+  state: {
+    pyodide: null,
+    activeTab: 0,
+    isRunning: false,
+    inputResolve: null,
+    saveTimer: null,
+  },
+  constants: {
+    defaultSettings: {
+      autoIndent: true,
+      clearBeforeRun: true,
+      showLines: true,
+      fontSize: 13,
+      wordWrap: false,
+    },
+  },
+  dom: {
+    byId: (id) => document.getElementById(id),
+  },
+  modules: {},
 };
-let settings = (() => {
-  try { return Object.assign({}, _defSettings, JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')); }
-  catch(_) { return { ..._defSettings }; }
-})();
+
+AppCore.modules.settings = {
+  load() {
+    try {
+      return Object.assign(
+        {},
+        AppCore.constants.defaultSettings,
+        JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')
+      );
+    } catch (_) {
+      return { ...AppCore.constants.defaultSettings };
+    }
+  },
+  save(nextSettings) {
+    try { localStorage.setItem('pyrunner_settings', JSON.stringify(nextSettings)); } catch (_) {}
+  },
+};
+
+AppCore.modules.persistence = {
+  saveTabs(nextTabs, nextActiveTab) {
+    try {
+      const editorEl = AppCore.dom.byId('editor');
+      if (editorEl && nextTabs[nextActiveTab]) nextTabs[nextActiveTab].code = editorEl.value;
+      localStorage.setItem('pyrunner_tabs', JSON.stringify(nextTabs));
+      localStorage.setItem('pyrunner_active', String(nextActiveTab));
+    } catch (_) {}
+  },
+  loadTabs() {
+    try {
+      const saved = localStorage.getItem('pyrunner_tabs');
+      if (!saved) return null;
+      return { tabs: JSON.parse(saved), active: parseInt(localStorage.getItem('pyrunner_active') || '0', 10) };
+    } catch (_) {
+      return null;
+    }
+  },
+  debounceSave(nextTabs, nextActiveTab, delay = 1500) {
+    clearTimeout(AppCore.state.saveTimer);
+    AppCore.state.saveTimer = setTimeout(
+      () => AppCore.modules.persistence.saveTabs(nextTabs, nextActiveTab),
+      delay
+    );
+  },
+};
+
+// 为现有代码保留兼容变量（逐步迁移到 AppCore）
+let pyodide = AppCore.state.pyodide;
+let activeTab = AppCore.state.activeTab;
+let isRunning = AppCore.state.isRunning;
+let inputResolve = AppCore.state.inputResolve;
+let settings = AppCore.modules.settings.load();
 
 function saveSettings() {
-  try { localStorage.setItem('pyrunner_settings', JSON.stringify(settings)); } catch(_) {}
+  AppCore.modules.settings.save(settings);
 }
 
-// ── 持久化（localStorage）──
 function saveState() {
-  try {
-    const _ed = document.getElementById('editor'); if(_ed) tabs[activeTab].code = _ed.value;
-    localStorage.setItem('pyrunner_tabs', JSON.stringify(tabs));
-    localStorage.setItem('pyrunner_active', activeTab);
-  } catch(_) {}
+  AppCore.modules.persistence.saveTabs(tabs, activeTab);
 }
+
 function loadState() {
-  try {
-    const saved = localStorage.getItem('pyrunner_tabs');
-    if (saved) return { tabs: JSON.parse(saved), active: parseInt(localStorage.getItem('pyrunner_active')||'0') };
-  } catch(_) {}
-  return null;
+  return AppCore.modules.persistence.loadTabs();
 }
+
 const _savedState = loadState();
-let tabs = _savedState ? _savedState.tabs :[{ name: 'main.py', code: _INITIAL_CODE }];
+let tabs = _savedState ? _savedState.tabs : [{ name: 'main.py', code: _INITIAL_CODE }];
 if (_savedState) {
   activeTab = Math.min(_savedState.active, tabs.length - 1);
+  AppCore.state.activeTab = activeTab;
 }
 
-// debounce 保存：内容变化后 1.5s 无操作才写入，避免频繁序列化大代码
-let _saveTimer = null;
 function debounceSaveState() {
-  clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(saveState, 1500);
+  AppCore.modules.persistence.debounceSave(tabs, activeTab);
 }
 
 // ── Pyodide init ──
@@ -1255,6 +1304,7 @@ async function initPyodide() {
     }, 250);
 
     pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/' });
+    AppCore.state.pyodide = pyodide;
     clearInterval(fakeInterval);
 
     const pkgGroups =[
@@ -1359,6 +1409,7 @@ async function runCode() {
   const code = document.getElementById('editor') ? document.getElementById('editor').value : '';
   if (!code.trim()) { showToast('请输入代码'); return; }
   isRunning = true;
+  AppCore.state.isRunning = true;
   _stopRequested = false;
   _userScrolledUp = false; // 每次新运行重置，自动跟随到底部
   setRunBtn(true);
@@ -1407,7 +1458,7 @@ builtins.input = _custom_input
     document.getElementById('stdin-submit').onclick = () => {
       const val = document.getElementById('stdin-input').value;
       document.getElementById('stdin-overlay').classList.remove('open');
-      if (inputResolve) { inputResolve(val); inputResolve = null; }
+      if (inputResolve) { inputResolve(val); inputResolve = null; AppCore.state.inputResolve = null; }
     };
     document.getElementById('stdin-input').onkeydown = (e) => {
       if (e.key === 'Enter') document.getElementById('stdin-submit').click();
@@ -1420,6 +1471,7 @@ builtins.input = _custom_input
       document.getElementById('stdin-overlay').classList.add('open');
       document.getElementById('stdin-input').focus();
       inputResolve = resolve;
+      AppCore.state.inputResolve = resolve;
     });
   };
 
@@ -1756,7 +1808,7 @@ mpl.rcParams['axes.unicode_minus'] = False
     if (_stopRequested) {
       // 停止时强制关闭 stdin overlay，resolve 悬空的 Promise，防止泄漏
       document.getElementById('stdin-overlay').classList.remove('open');
-      if (inputResolve) { inputResolve(''); inputResolve = null; }
+      if (inputResolve) { inputResolve(''); inputResolve = null; AppCore.state.inputResolve = null; }
       appendOutput('\n⏹ 已手动停止执行', 'info');
       setStatus('ready', '就绪');
     } else {
@@ -1775,6 +1827,7 @@ mpl.rcParams['axes.unicode_minus'] = False
     }
   }
   isRunning = false;
+  AppCore.state.isRunning = false;
   _stopRequested = false;
   setRunBtn(false);
   // 解锁编辑器
@@ -2111,6 +2164,7 @@ function switchTab(idx) {
   const _edT = document.getElementById('editor');
   if(_edT) tabs[activeTab].code = _edT.value;
   activeTab = idx;
+  AppCore.state.activeTab = activeTab;
   clearErrorHighlight(); // 切换 Tab 时清除旧 Tab 残留的错误高亮
   if(_edT){ _edT.value = tabs[idx].code || ''; highlightCode(); }
   renderTabs();
@@ -2121,6 +2175,7 @@ function removeTab(e, idx) {
   if (tabs.length === 1) { showToast('至少保留一个标签页'); return; }
   tabs.splice(idx, 1);
   activeTab = Math.min(activeTab, tabs.length - 1);
+  AppCore.state.activeTab = activeTab;
   const _edR = document.getElementById('editor'); if(_edR){ _edR.value = tabs[activeTab].code || ''; highlightCode(); }
   renderTabs();
 }
@@ -2835,37 +2890,64 @@ initPyodide();
 </script>
 <script>
 // 页面关闭时强制立即保存（绕过 debounce）
-window.addEventListener('beforeunload', () => { clearTimeout(_saveTimer); saveState(); });
+window.addEventListener('beforeunload', () => {
+  clearTimeout(AppCore.state.saveTimer);
+  saveState();
+});
 
+AppCore.modules.pwa = (() => {
+  let deferredPrompt = null;
+  const installBtn = () => document.getElementById('pwa-install-btn');
 
-  window.addEventListener('load', () => {
+  const registerServiceWorker = () => {
+    if (!('serviceWorker' in navigator)) return;
     navigator.serviceWorker.register('./sw.js')
       .then(r => console.log('[SW] registered:', r.scope))
       .catch(e => console.warn('[SW] register failed:', e));
-  });
-}
-let _deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  _deferredPrompt = e;
-  const btn = document.getElementById('pwa-install-btn');
-  if (btn) btn.style.display = 'flex';
-});
-window.addEventListener('appinstalled', () => {
-  _deferredPrompt = null;
-  const btn = document.getElementById('pwa-install-btn');
-  if (btn) btn.style.display = 'none';
-  showToast('✓ PyRunner 已安装到桌面');
-});
-function installPWA() {
-  if (!_deferredPrompt) { showToast('请使用浏览器菜单中的「安装」或「添加到主屏幕」'); return; }
-  _deferredPrompt.prompt();
-  _deferredPrompt.userChoice.then(() => {
-    _deferredPrompt = null;
-    const btn = document.getElementById('pwa-install-btn');
+  };
+
+  const bindInstallEvents = () => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const btn = installBtn();
+      if (btn) btn.style.display = 'flex';
+    });
+
+    window.addEventListener('appinstalled', () => {
+      deferredPrompt = null;
+      const btn = installBtn();
+      if (btn) btn.style.display = 'none';
+      showToast('✓ PyRunner 已安装到桌面');
+    });
+  };
+
+  const install = async () => {
+    if (!deferredPrompt) {
+      showToast('请使用浏览器菜单中的「安装」或「添加到主屏幕」');
+      return;
+    }
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    const btn = installBtn();
     if (btn) btn.style.display = 'none';
-  });
+  };
+
+  return {
+    init() {
+      window.addEventListener('load', registerServiceWorker);
+      bindInstallEvents();
+    },
+    install,
+  };
+})();
+
+function installPWA() {
+  AppCore.modules.pwa.install();
 }
+
+AppCore.modules.pwa.init();
 </script>
 </body>
 </html>
