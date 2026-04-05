@@ -1449,7 +1449,7 @@ async function runCode() {
   _userScrolledUp = false; // 每次新运行重置，自动跟随到底部
   setRunBtn(true);
   setStatus('loading', '运行中');
-  if (settings.clearBeforeRun) clearOutput();
+  if (settings.clearBeforeRun) clearOutput({ resetHistory: false });
 
   // 运行期间锁定编辑器，防止用户误以为可以实时修改
   const _edLock = document.getElementById('editor');
@@ -1773,6 +1773,8 @@ mpl.rcParams['axes.unicode_minus'] = False
         figData.layout.autosize = true;
         figData.layout.font = Object.assign({ family:'Sora,system-ui,sans-serif', size:12 }, figData.layout.font||{});
         const wrap = document.createElement('div');
+        wrap.className = 'plotly-out';
+        wrap.dataset.plotlyJson = encodeURIComponent(pjson);
         wrap.style.cssText = 'width:100%;height:420px;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:10px 0;background:var(--surface);';
         outputEl.appendChild(wrap);
         await new Promise(r => requestAnimationFrame(r));
@@ -1927,7 +1929,8 @@ function appendOutput(text, cls) {
   trimOutputIfNeeded();
 }
 
-function clearOutput() {
+function clearOutput(options = {}) {
+  const { resetHistory = true, resetVars = true } = options;
   document.getElementById('output-content').innerHTML = '';
   _outputLineCount = 0;
   _userScrolledUp = false;
