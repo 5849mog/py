@@ -768,29 +768,6 @@
     font-family: var(--sans);
   }
 
-  /* ── 运行历史导航 ── */
-  #history-nav {
-    display: none; align-items: center; gap: 4px;
-    margin-right: 4px;
-  }
-  #history-nav.visible { display: flex; }
-  .hist-btn {
-    width: 22px; height: 22px; border-radius: 5px;
-    border: 1px solid var(--border-md);
-    background: transparent; color: var(--text3);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer; font-size: 11px;
-    transition: background 0.12s, color 0.12s, transform 0.12s cubic-bezier(0.34,1.56,0.64,1);
-    flex-shrink: 0;
-  }
-  .hist-btn:hover { background: var(--surface2); color: var(--text2); }
-  .hist-btn:active { transform: scale(0.88); }
-  .hist-btn:disabled { opacity: 0.3; pointer-events: none; }
-  #history-label {
-    font-size: 10px; font-weight: 600; color: var(--text3);
-    white-space: nowrap; padding: 0 2px;
-  }
-
   /* ── 变量检查器面板 ── */
   #vars-panel {
     border-top: 1px solid var(--border-md);
@@ -1005,16 +982,6 @@
         <div id="output-header">
           <span id="output-title">输出</span><span id="output-linecount" style="font-size:10px;color:var(--text3);margin-left:6px;font-weight:400;"></span>
           <div class="output-spacer"></div>
-          <!-- 运行历史导航 -->
-          <div id="history-nav">
-            <button class="hist-btn" id="hist-prev" onclick="navHistory(-1)" title="上一次运行">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M15 18l-6-6 6-6"/></svg>
-            </button>
-            <span id="history-label">1/1</span>
-            <button class="hist-btn" id="hist-next" onclick="navHistory(1)" title="下一次运行">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path d="M9 18l6-6-6-6"/></svg>
-            </button>
-          </div>
           <div class="output-action-btn" id="copy-output-btn" onclick="copyOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-right:3px;vertical-align:-1px;display:inline-block"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>复制</div>
           <div class="output-action-btn" onclick="clearOutput()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px;margin-right:3px;vertical-align:-1px;display:inline-block"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>清空</div>
         </div>
@@ -1853,8 +1820,6 @@ mpl.rcParams['axes.unicode_minus'] = False
     appendOutput(`\n✓ 运行完成，耗时 ${elapsed}s`, 'success');
     setStatus('ready', '就绪');
     AppCore.eventBus.emit('runner:completed', { elapsed: Number(elapsed) });
-    // 保存运行历史快照
-    _saveOutputSnapshot();
     // 刷新变量检查器
     refreshVarsPanel();
   } catch(e) {
@@ -1928,36 +1893,6 @@ function ensureOutputInteractionDelegate() {
   });
 }
 
-async function ensurePlotlyLoaded() {
-  if (window.Plotly) return;
-  await new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.32.0/plotly.min.js';
-    s.onload = res; s.onerror = rej;
-    document.head.appendChild(s);
-  });
-}
-
-async function rehydrateOutputInteractiveBlocks() {
-  const plots = [...document.querySelectorAll('.plotly-out[data-plotly-json]')];
-  if (plots.length === 0) return;
-  try {
-    await ensurePlotlyLoaded();
-    for (const plotEl of plots) {
-      const raw = plotEl.dataset.plotlyJson;
-      if (!raw) continue;
-      const figData = JSON.parse(decodeURIComponent(raw));
-      await Plotly.react(plotEl, figData.data, figData.layout || {}, {
-        responsive: true, displayModeBar: true,
-        modeBarButtonsToRemove:['sendDataToCloud','editInChartStudio','lasso2d','select2d'],
-        displaylogo: false
-      });
-    }
-  } catch (err) {
-    console.warn('历史 Plotly 重建失败:', err);
-  }
-}
-
 // 监听用户在输出区域的滚动行为
 function initOutputScrollListener() {
   const s = document.getElementById('output-scroll');
@@ -1999,17 +1934,10 @@ function clearOutput(options = {}) {
   document.getElementById('output-content').innerHTML = '';
   _outputLineCount = 0;
   _userScrolledUp = false;
-  if (resetHistory) {
-    _runHistory = [];
-    _historyIdx = -1;
-    document.getElementById('history-nav').classList.remove('visible');
-  }
-  if (resetVars) {
-    document.getElementById('vars-grid').innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
-    document.getElementById('vars-count').classList.remove('visible');
-    document.getElementById('vars-panel').classList.remove('has-vars', 'open');
-    _varsPanelOpen = false;
-  }
+  document.getElementById('vars-grid').innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
+  document.getElementById('vars-count').classList.remove('visible');
+  document.getElementById('vars-panel').classList.remove('has-vars', 'open');
+  _varsPanelOpen = false;
   const lc = document.getElementById('output-linecount'); if(lc) lc.textContent='';
 }
 
@@ -2578,17 +2506,45 @@ async function refreshInstalledPkgs() {
   if (!pyodide) return;
 
   try {
-    // 获取 Python 环境中已载入的核心库和通过 micropip 安装的库
-    const pkgs = await pyodide.runPythonAsync(`
-      import sys, micropip
-      # 获取已安装的库名列表并去重排序
-      installed = sorted(list(set([p.name for p in micropip.list()] + list(sys.modules.keys()))))
-      # 过滤掉内部私有模块和过于琐碎的子模块
-      filtered =[p for p in installed if not p.startswith('_') and '.' not in p and len(p) > 1]
-      ','.join(filtered)
+    // 获取 Python 环境中可识别的安装包（优先 importlib.metadata，兼容 micropip）
+    const pkgsJson = await pyodide.runPythonAsync(`
+import json, sys
+
+installed = set()
+
+try:
+    import importlib.metadata as _md
+    for dist in _md.distributions():
+        try:
+            name = (dist.metadata.get('Name') or '').strip() or (dist.name or '').strip()
+            if name:
+                installed.add(name)
+        except Exception:
+            pass
+except Exception:
+    pass
+
+try:
+    import micropip
+    for item in micropip.list():
+        name = getattr(item, 'name', None)
+        if name:
+            installed.add(str(name))
+except Exception:
+    pass
+
+for m in list(sys.modules.keys()):
+    if m and not m.startswith('_') and '.' not in m:
+        installed.add(m)
+
+filtered = sorted(
+    p for p in installed
+    if p and not p.startswith('_') and '.' not in p and len(p) > 1
+)
+json.dumps(filtered)
     `);
-    
-    const pkgArray = pkgs.split(',').filter(p => p);
+
+    const pkgArray = JSON.parse(pkgsJson || '[]');
     listEl.innerHTML = pkgArray.map(p => `<span class="pkg-tag">${p}</span>`).join('');
     if (pkgArray.length === 0) listEl.innerHTML = '<span style="font-size:10px;color:var(--text3)">暂无已安装的第三方库</span>';
   } catch (err) {
@@ -2655,59 +2611,7 @@ function importFile(e) {
 }
 
 // ══════════════════════════════════════════════
-// ── 功能一：运行历史 ──
-// ══════════════════════════════════════════════
-const MAX_HISTORY = 5;
-let _runHistory = [];    // [{html, lineCount, timestamp}]
-let _historyIdx = -1;    // 当前查看的位置，-1 = 最新
-
-function _saveOutputSnapshot() {
-  const el = document.getElementById('output-content');
-  const lc = _outputLineCount;
-  const snapshot = { html: el.innerHTML, lineCount: lc, ts: Date.now() };
-  _runHistory.push(snapshot);
-  if (_runHistory.length > MAX_HISTORY) _runHistory.shift();
-  _historyIdx = _runHistory.length - 1; // 指向最新
-  _updateHistoryUI();
-}
-
-function _updateHistoryUI() {
-  const nav = document.getElementById('history-nav');
-  const label = document.getElementById('history-label');
-  const prev = document.getElementById('hist-prev');
-  const next = document.getElementById('hist-next');
-  const n = _runHistory.length;
-  if (n === 0) { nav.classList.remove('visible'); return; }
-  nav.classList.add('visible');
-  const cur = _historyIdx + 1;
-  label.textContent = `${cur}/${n}`;
-  prev.disabled = _historyIdx <= 0;
-  next.disabled = _historyIdx >= n - 1;
-}
-
-function navHistory(dir) {
-  const n = _runHistory.length;
-  if (n === 0) return;
-  const newIdx = Math.max(0, Math.min(n - 1, _historyIdx + dir));
-  if (newIdx === _historyIdx) return;
-  _historyIdx = newIdx;
-  const snap = _runHistory[_historyIdx];
-  const el = document.getElementById('output-content');
-  el.innerHTML = snap.html;
-  _outputLineCount = snap.lineCount;
-  ensureOutputInteractionDelegate();
-  rehydrateOutputInteractiveBlocks();
-  const lc = document.getElementById('output-linecount');
-  if (lc) lc.textContent = snap.lineCount > 0 ? snap.lineCount + ' 行' : '';
-  _updateHistoryUI();
-  // 显示时间戳提示
-  const ago = Math.round((Date.now() - snap.ts) / 1000);
-  const agoStr = ago < 60 ? `${ago}秒前` : ago < 3600 ? `${Math.round(ago/60)}分钟前` : `${Math.round(ago/3600)}小时前`;
-  showToast(`查看第 ${_historyIdx+1} 次运行结果（${agoStr}）`);
-}
-
-// ══════════════════════════════════════════════
-// ── 功能二：代码格式化 (autopep8) ──
+// ── 功能一：代码格式化 (autopep8) ──
 // ══════════════════════════════════════════════
 let _autopep8Ready = false;
 let _autopep8Loading = false;
