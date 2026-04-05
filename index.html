@@ -97,6 +97,8 @@
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
     background-repeat: repeat;
     background-size: 128px 128px;
+    transform: translateZ(0); /* Force hardware compositing */
+    will-change: transform;
   }
 
   /* ── Layout ── */
@@ -342,7 +344,7 @@
     letter-spacing: 6px;
   }
 
-  /* ── Code editor ── */
+  /* ── 🚀 ZERO-LAG SCROLLING CODE EDITOR ── */
   #code-wrap {
     flex: 1; min-height: 120px; overflow: hidden;
     display: flex; flex-direction: row; position: relative;
@@ -371,33 +373,61 @@
     border-right: 1px solid var(--border-md);
     user-select: none; pointer-events: none;
     overflow: hidden; white-space: pre;
-    will-change: scroll-position;
     opacity: 0.7;
   }
+  /* The native scroll container wrapper */
   #highlight-wrap {
-    flex: 1; position: relative; overflow: hidden;
-    display: flex;
+    flex: 1; position: relative; 
+    overflow: auto; /* Takes over native scrolling */
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Hide scrollbar for clean UI */
   }
-  #highlight-pre, #editor {
-    position: absolute; inset: 0;
+  #highlight-wrap::-webkit-scrollbar { display: none; }
+  
+  /* The auto-expanding content area locking pre & textarea together */
+  #editor-content {
+    position: relative;
+    min-height: 100%; min-width: 100%;
+    display: inline-block; /* Allows width to grow horizontally based on pre content */
+    vertical-align: top;
+  }
+  
+  #highlight-pre {
     margin: 0; padding: 16px 16px 60px 16px;
     font-family: var(--mono); font-size: 13px; line-height: 1.8;
     tab-size: 4; -moz-tab-size: 4;
-    white-space: pre; overflow-wrap: normal;
-    word-wrap: normal;
-  }
-  #highlight-pre {
+    white-space: pre; overflow-wrap: normal; word-wrap: normal;
     background: transparent; border: none;
-    overflow: hidden; pointer-events: none;
+    pointer-events: none;
     z-index: 1; color: transparent;
-    will-change: scroll-position;
+    box-sizing: border-box;
   }
   #highlight-code {
     font-family: inherit; font-size: inherit;
     line-height: inherit; display: block;
     background: none !important;
   }
+  
+  #editor {
+    position: absolute; inset: 0; width: 100%; height: 100%; /* Perfectly overlay #editor-content */
+    margin: 0; padding: 16px 16px 60px 16px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.8;
+    tab-size: 4; -moz-tab-size: 4;
+    white-space: pre; overflow-wrap: normal; word-wrap: normal;
+    overflow: hidden; /* Disabled internal scrolling to lock with parent */
+    background: transparent; border: none; outline: none;
+    resize: none; z-index: 2;
+    color: transparent;
+    caret-color: var(--accent);
+    -webkit-text-fill-color: transparent;
+    box-sizing: border-box;
+  }
+  #editor::selection { background: rgba(201,100,66,0.15); -webkit-text-fill-color: transparent; }
+
   /* ── Word Wrap Mode ── */
+  .wrap-mode #editor-content {
+    display: block; width: 100%;
+  }
   .wrap-mode #editor,
   .wrap-mode #highlight-pre,
   .wrap-mode #highlight-code {
@@ -405,20 +435,6 @@
     word-break: break-all !important;
     overflow-wrap: anywhere !important;
   }
-
-  #editor::-webkit-scrollbar { display: none; }
-  #editor {
-    background: transparent; border: none; outline: none;
-    resize: none; z-index: 2;
-    overflow: auto;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-y pan-x;
-    color: transparent;
-    caret-color: var(--accent);
-    -webkit-text-fill-color: transparent;
-    scrollbar-width: none;
-  }
-  #editor::selection { background: rgba(201,100,66,0.15); -webkit-text-fill-color: transparent; }
 
   /* 语法配色 — Warm parchment palette */
   #highlight-code .token.comment, #highlight-code .token.prolog { color: #a09e96; font-style: italic; }
@@ -980,11 +996,17 @@
   <!-- Main area -->
   <div id="main">
     <div id="editor-panel">
+      <!-- 🚀 ZERO-LAG SCROLLING STRUCTURE -->
       <div id="code-wrap">
+        <!-- 行号单独滚动，由 JS 同步 -->
         <div id="line-numbers"></div>
+        <!-- 核心！原生的滚动容器 -->
         <div id="highlight-wrap">
-          <pre id="highlight-pre" aria-hidden="true"><code id="highlight-code" class="language-python"></code></pre>
-          <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
+          <!-- 自适应展开的内部容器，确保 textarea 和 pre 尺寸绝对相同且物理捆绑 -->
+          <div id="editor-content">
+            <pre id="highlight-pre" aria-hidden="true"><code id="highlight-code" class="language-python"></code></pre>
+            <textarea id="editor" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off"></textarea>
+          </div>
         </div>
       </div>
       <!-- Resizer -->
@@ -1168,7 +1190,6 @@
           <button class="pkg-btn" id="pkg-install-btn" onclick="installPackageManual()">安装</button>
         </div>
         <div id="installed-pkgs-list">
-          <!-- 这里动态渲染已安装的库标签 -->
           <span style="font-size:10px;color:var(--text3)">正在获取已安装列表...</span>
         </div>
       </div>
@@ -1867,7 +1888,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       const relevant = execIdx >= 0 ? lines.slice(execIdx) : lines.slice(-8);
       appendOutput('\n' + relevant.join('\n'), 'stderr');
       const relevantText = relevant.join('\n');
-      const lineMatches = [...relevantText.matchAll(/line (\d+)/g)];
+      const lineMatches =[...relevantText.matchAll(/line (\d+)/g)];
       const lineNo = lineMatches.length > 0 ? parseInt(lineMatches[lineMatches.length - 1][1]) : 0;
       if (lineNo > 0) highlightErrorLine(lineNo);
       setStatus('error', '出错');
@@ -1953,7 +1974,6 @@ function appendOutput(text, cls) {
     }
   });
   
-  // 有输出时显示 AI 分析按钮
   const aiBtn = document.getElementById('ai-explain-btn');
   if (aiBtn && _outputLineCount > 0) aiBtn.style.display = 'flex';
   
@@ -1972,7 +1992,6 @@ function clearOutput(options = {}) {
   _varsPanelOpen = false;
   const lc = document.getElementById('output-linecount'); if(lc) lc.textContent='';
   
-  // 清空时隐藏 AI 按钮
   const aiBtn = document.getElementById('ai-explain-btn');
   if (aiBtn) aiBtn.style.display = 'none';
 }
@@ -2014,28 +2033,25 @@ function setStatus(kind, text) {
   dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
 }
 
-let _highlightRaf = null;
+// ── 同步高亮渲染：去除延迟保证打字绝对跟手 ──
 function highlightCode() {
-  if (_highlightRaf) return;
-  _highlightRaf = requestAnimationFrame(() => {
-    _highlightRaf = null;
-    const ed = document.getElementById('editor');
-    const code = document.getElementById('highlight-code');
-    if (!ed || !code) return;
-    
-    const raw = ed.value;
-    let html = '';
-    if (typeof Prism !== 'undefined') {
-      html = Prism.highlight(raw, Prism.languages.python, 'python');
-    } else {
-      html = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-    
-    if (raw.endsWith('\n')) html += '&#8203;';
-    code.innerHTML = html;
-    syncScroll();
-    updateLineNumbers();
-  });
+  const ed = document.getElementById('editor');
+  const code = document.getElementById('highlight-code');
+  if (!ed || !code) return;
+  
+  const raw = ed.value;
+  let html = '';
+  if (typeof Prism !== 'undefined') {
+    html = Prism.highlight(raw, Prism.languages.python, 'python');
+  } else {
+    html = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  
+  if (raw.endsWith('\n')) html += '&#8203;';
+  code.innerHTML = html;
+  
+  // 保证行数严格同步
+  updateLineNumbers();
 }
 
 function updateLineNumbers() {
@@ -2050,14 +2066,12 @@ function updateLineNumbers() {
   ln.textContent = s;
 }
 
+// ── 零延迟同步：将行号也锁定在外层 Native Scroll ──
 function syncScroll() {
-  const ed  = document.getElementById('editor');
-  const pre = document.getElementById('highlight-pre');
-  const ln  = document.getElementById('line-numbers');
-  if (!ed || !pre) return;
-  pre.scrollTop  = ed.scrollTop;
-  pre.scrollLeft = ed.scrollLeft;
-  if (ln) ln.scrollTop = ed.scrollTop;
+  const hw = document.getElementById('highlight-wrap');
+  const ln = document.getElementById('line-numbers');
+  if (!hw || !ln) return;
+  ln.scrollTop = hw.scrollTop;
 }
 
 window.addEventListener('resize', syncScroll);
@@ -2108,7 +2122,8 @@ function _renderErrorHighlight() {
   code.innerHTML = finalHtml;
   
   const lineH = parseFloat(getComputedStyle(ed).lineHeight) || 22;
-  ed.scrollTop = Math.max(0, (_errLineNo - 4) * lineH);
+  const hw = document.getElementById('highlight-wrap');
+  if (hw) hw.scrollTop = Math.max(0, (_errLineNo - 4) * lineH);
   syncScroll();
 }
 function clearErrorHighlight() {
@@ -2147,7 +2162,8 @@ function initEditor(code) {
     highlightCode();
   });
 
-  ed.addEventListener('scroll', syncScroll, { passive: true });
+  const hw = document.getElementById('highlight-wrap');
+  if (hw) hw.addEventListener('scroll', syncScroll, { passive: true });
 
   ed.addEventListener('keydown', (e) => {
     const s = e.target.selectionStart, end = e.target.selectionEnd;
@@ -2548,7 +2564,7 @@ json.dumps(names)
       micropipPkgs = JSON.parse(micropipJson || '[]');
     } catch (_) {}
 
-    const pkgArray = [...new Set([...loadedPkgs, ...micropipPkgs])]
+    const pkgArray =[...new Set([...loadedPkgs, ...micropipPkgs])]
       .filter(p => p && !String(p).startsWith('_'))
       .sort((a, b) => String(a).localeCompare(String(b)));
 
@@ -2900,9 +2916,9 @@ function downloadCode() {
 // ── 功能：AI 辅助诊断点评 (DeepSeek SSE) ──
 // ══════════════════════════════════════════════
 let _aiAbortController = null;
-let _lastAICode = null;      // 缓存上一次分析的代码
-let _lastAIOutput = null;    // 缓存上一次分析的输出
-let _lastAIResponse = null;  // 缓存上一次分析的完整AI结果
+let _lastAICode = null;
+let _lastAIOutput = null;
+let _lastAIResponse = null;
 
 async function loadMarked() {
     if (window.marked) return;
@@ -2964,7 +2980,6 @@ async function triggerAI() {
   }
 
   // --- 智能缓存拦截 ---
-  // 如果代码和输出没有变化，且已经有完整回答，直接展示缓存，不浪费 Token
   if (code === _lastAICode && outputText === _lastAIOutput && _lastAIResponse) {
       document.getElementById('ai-overlay').classList.add('open');
       const aiBody = document.getElementById('ai-body-content');
@@ -2978,7 +2993,6 @@ async function triggerAI() {
       return;
   }
 
-  // 重置缓存状态并准备新请求
   _lastAICode = code;
   _lastAIOutput = outputText;
   _lastAIResponse = '';
@@ -3022,7 +3036,7 @@ async function triggerAI() {
     if (!response.ok) {
       const err = await response.json().catch(()=>({}));
       aiBody.innerHTML = `<div style="color:var(--red);font-size:13px;">API 请求失败 (${response.status}): ${err.error?.message || response.statusText}</div>`;
-      _lastAICode = null; // 发生错误，使缓存失效
+      _lastAICode = null; 
       return;
     }
 
@@ -3057,7 +3071,7 @@ async function triggerAI() {
   } catch(e) {
     if (e.name === 'AbortError') return;
     aiBody.innerHTML = `<div style="color:var(--red);font-size:13px;">网络错误或发生异常: ${e.message}</div>`;
-    _lastAICode = null; // 使缓存失效
+    _lastAICode = null;
   }
 }
 
@@ -3080,7 +3094,6 @@ async function triggerAI() {
   if (!settings.autoIndent) document.getElementById('auto-indent-toggle').classList.remove('on');
   if (!settings.clearBeforeRun) document.getElementById('clear-before-run-toggle').classList.remove('on');
   
-  // 初始化 API Key
   document.getElementById('deepseek-api-key').value = settings.deepseekApiKey || '';
 })();
 
@@ -3088,7 +3101,7 @@ async function triggerAI() {
 renderTabs();
 initPyodide();
 
-// 页面关闭时强制立即保存（绕过 debounce）
+// 页面关闭时强制立即保存
 window.addEventListener('beforeunload', () => {
   clearTimeout(AppCore.storageManager.saveTimer);
   saveState();
