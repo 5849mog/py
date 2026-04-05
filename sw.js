@@ -7,6 +7,9 @@ const VERSION = 'pyrunner-v2';
 const SHELL_CACHE = 'pyrunner-shell-v2';
 const SHELL_FILES = [
   './index.html',
+  './styles/main.css',
+  './js/app-core.js',
+  './js/pwa.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
