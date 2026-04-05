@@ -1,0 +1,1653 @@
+// ── 初始代码（必须在 tabs 之前声明，避免 let 的 TDZ 问题）──
+const _INITIAL_CODE = '# 欢迎使用 PyRunner 🐍\n# 这是一个支持完整 Python 3.11 的在线运行环境\n# 内置 NumPy, Pandas, Matplotlib 等常用科学计算库\n\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在生成漂亮的极坐标玫瑰图...")\n\n# 生成数据\ntheta = np.linspace(0, 8 * np.pi, 1000)\n# 玫瑰线方程 r = cos(k * theta)\nk = 5 / 4\nr = np.cos(k * theta)\n\n# 绘制图表\nfig = plt.figure(figsize=(6, 6))\nax = fig.add_subplot(111, projection=\'polar\')\n\n# 使用渐变颜色线段\nax.plot(theta, r, color=\'#E07840\', linewidth=2, alpha=0.8)\nax.fill(theta, r, color=\'#E07840\', alpha=0.2)\n\nax.set_title("Python 极坐标玫瑰线 (k=1.25)", fontsize=14, pad=20)\nax.grid(True, alpha=0.3)\nax.set_yticklabels([]) # 隐藏径向刻度\n\nplt.tight_layout()\nplt.show()\n\nprint("✨ 运行成功！尝试点击右上角「代码片段」探索更震撼的算法示例。")\n';
+
+// ── State ──
+let pyodide = null;
+let activeTab = 0;
+let isRunning = false;
+let inputResolve = null;
+const _defSettings = { 
+  autoIndent: true, 
+  clearBeforeRun: true, 
+  showLines: true, 
+  fontSize: 13,
+  wordWrap: false 
+};
+let settings = (() => {
+  try { return Object.assign({}, _defSettings, JSON.parse(localStorage.getItem('pyrunner_settings') || '{}')); }
+  catch(_) { return { ..._defSettings }; }
+})();
+
+function saveSettings() {
+  try { localStorage.setItem('pyrunner_settings', JSON.stringify(settings)); } catch(_) {}
+}
+
+// ── 持久化（localStorage）──
+function saveState() {
+  try {
+    const _ed = document.getElementById('editor'); if(_ed) tabs[activeTab].code = _ed.value;
+    localStorage.setItem('pyrunner_tabs', JSON.stringify(tabs));
+    localStorage.setItem('pyrunner_active', activeTab);
+  } catch(_) {}
+}
+function loadState() {
+  try {
+    const saved = localStorage.getItem('pyrunner_tabs');
+    if (saved) return { tabs: JSON.parse(saved), active: parseInt(localStorage.getItem('pyrunner_active')||'0') };
+  } catch(_) {}
+  return null;
+}
+const _savedState = loadState();
+let tabs = _savedState ? _savedState.tabs :[{ name: 'main.py', code: _INITIAL_CODE }];
+if (_savedState) {
+  activeTab = Math.min(_savedState.active, tabs.length - 1);
+}
+
+// debounce 保存：内容变化后 1.5s 无操作才写入，避免频繁序列化大代码
+let _saveTimer = null;
+function debounceSaveState() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveState, 1500);
+}
+
+// ── Pyodide init ──
+async function initPyodide() {
+  const _initCode = (tabs && tabs[activeTab]) ? tabs[activeTab].code : (_INITIAL_CODE || '');
+  initEditor(_initCode);
+  try {
+    const setLoadMsg = (m, pct) => { 
+      const el = document.getElementById('loader-text'); 
+      if(el) el.textContent = m; 
+      if(pct !== undefined) {
+        const f = document.getElementById('loader-fill');
+        if(f) f.style.width = pct + '%';
+      } 
+    };
+
+    setLoadMsg('正在建立与 Python 的连接...', 5);
+    let fakePct = 5;
+    const fakeInterval = setInterval(() => {
+      if (fakePct < 35) {
+        fakePct += 1.5;
+        setLoadMsg('正在下载核心编译环境...', fakePct);
+      }
+    }, 250);
+
+    pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.1/full/' });
+    clearInterval(fakeInterval);
+
+    const pkgGroups =[
+      { label: '加载数值计算库 (numpy, scipy)...', pkgs:['numpy', 'scipy', 'micropip'], pct: 45 },
+      { label: '加载数据分析库 (pandas, statsmodels)...', pkgs:['pandas', 'statsmodels'], pct: 55 },
+      { label: '加载可视化库 (matplotlib, Pillow)...', pkgs: ['matplotlib', 'Pillow'], pct: 65 },
+      { label: '加载机器学习库 (sklearn, sympy)...', pkgs:['scikit-learn', 'sympy'], pct: 75 },
+      { label: '加载网络架构库 (networkx)...', pkgs:['networkx', 'pyodide-http'], pct: 80 },
+    ];
+    for (const g of pkgGroups) {
+      setLoadMsg(g.label, g.pct);
+      await pyodide.loadPackage(g.pkgs);
+    }
+
+    setLoadMsg('安装高级扩展图表库 (seaborn, plotly)...', 85);
+    try {
+      // 适配 Python 3.12：安装 narwhals 兼容层并锁定稳定的 Plotly 5.24.1
+            await pyodide.runPythonAsync("import micropip; await micropip.install(['narwhals', 'plotly==5.24.1', 'seaborn'])")
+    } catch(_) {}
+
+    setLoadMsg('正在加载中文字体，让图表更清晰...', 92);
+    try {
+      const fontUrl = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf';
+      const fontResp = await fetch(fontUrl);
+      if (!fontResp.ok) throw new Error('font fetch ' + fontResp.status);
+      const fontBytes = new Uint8Array(await fontResp.arrayBuffer());
+      pyodide.FS.writeFile('/tmp/NotoSansSC.otf', fontBytes);
+      pyodide.runPython(`
+import matplotlib.font_manager as fm, matplotlib as mpl
+fe = fm.FontEntry(fname='/tmp/NotoSansSC.otf', name='Noto Sans SC')
+fm.fontManager.ttflist.insert(0, fe)
+mpl.rcParams['font.family'] = 'Noto Sans SC'
+mpl.rcParams['axes.unicode_minus'] = False
+`);
+      showToast('Python 3.11 已就绪，中文字体已加载 ✓');
+    } catch(fontErr) {
+      console.warn('中文字体加载失败，降级:', fontErr);
+      pyodide.runPython(`
+import matplotlib as mpl
+mpl.rcParams['axes.unicode_minus'] = False
+`);
+      showToast('Python 3.11 已就绪（中文字体加载失败）');
+    }
+
+
+
+        setLoadMsg('一切就绪，开始探索数学与代码的美妙吧！', 100);
+    setStatus('ready', '就绪');
+    document.getElementById('run-btn').classList.remove('loading');
+    setTimeout(() => {
+      document.getElementById('loading-overlay').style.opacity = '0';
+      setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
+      refreshInstalledPkgs(); // 初始加载完成后获取列表
+      initOutputScrollListener(); // 启动输出智能滚动监听
+    }, 300);
+  } catch(e) {
+    setStatus('error', '加载失败');
+    appendOutput('⚠ Pyodide 加载失败，请检查网络连接\n' + e, 'stderr');
+    document.getElementById('loading-overlay').style.display = 'none';
+  }
+}
+
+// ── Run / Stop ──
+let _stopRequested = false;
+function toggleRun() {
+  if (isRunning) {
+    _stopRequested = true;
+    // Pyodide 在主线程同步运行，点击停止只在当前代码执行完毕后才生效
+    // 如果代码含有 await（如 input()），则能更快响应
+    showToast('⏹ 停止请求已发出，将在当前操作完成后生效');
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+  } else {
+    runCode();
+  }
+}
+function setRunBtn(running) {
+  const btn = document.getElementById('run-btn');
+  const icon = document.getElementById('run-icon');
+  const label = document.getElementById('run-label');
+  btn.disabled = false;
+  btn.style.opacity = '';
+  if (running) {
+    btn.classList.remove('loading');
+    btn.classList.add('running');
+    icon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+    label.textContent = '停止';
+    btn.style.background = 'var(--red)';
+    btn.title = '停止运行（将在当前操作完成后生效）';
+  } else {
+    btn.classList.remove('running');
+    icon.innerHTML = '<path d="M8 5v14l11-7z"/>';
+    label.textContent = '运行';
+    btn.style.background = '';
+    btn.title = '运行 (Ctrl+Enter)';
+  }
+}
+
+async function runCode() {
+  if (!pyodide || isRunning) return;
+  const code = document.getElementById('editor') ? document.getElementById('editor').value : '';
+  if (!code.trim()) { showToast('请输入代码'); return; }
+  isRunning = true;
+  _stopRequested = false;
+  _userScrolledUp = false; // 每次新运行重置，自动跟随到底部
+  setRunBtn(true);
+  setStatus('loading', '运行中');
+  if (settings.clearBeforeRun) clearOutput();
+
+  // 运行期间锁定编辑器，防止用户误以为可以实时修改
+  const _edLock = document.getElementById('editor');
+  if (_edLock) { _edLock.readOnly = true; _edLock.style.opacity = '0.7'; }
+
+  const t0 = performance.now();
+  let outputEl = document.getElementById('output-content');
+
+  if (!window._captureInstalled) {
+    window._captureInstalled = true;
+    pyodide.runPython(`
+import sys, io
+class _Capture(io.TextIOBase):
+    def __init__(self, kind):
+        self.kind = kind
+    def write(self, s):
+        import js
+        js._pyrunner_write(self.kind, s)
+        return len(s)
+    def flush(self): pass
+sys.stdout = _Capture('stdout')
+sys.stderr = _Capture('stderr')
+`);
+    window._pyrunner_write = (kind, s) => appendOutput(s, kind === 'stderr' ? 'stderr' : null);
+  }
+
+  if (!window._inputInstalled) {
+    window._inputInstalled = true;
+    pyodide.runPython(`
+import builtins
+_orig_input = builtins.input
+def _custom_input(prompt=""):
+    import js
+    return js._pyrunner_input(str(prompt))
+builtins.input = _custom_input
+`);
+  }
+  // stdin 处理：只初始化一次，放到 runCode 外更合理，但为兼容现有结构在此处用 flag 保护
+  if (!window._stdinInstalled) {
+    window._stdinInstalled = true;
+    document.getElementById('stdin-submit').onclick = () => {
+      const val = document.getElementById('stdin-input').value;
+      document.getElementById('stdin-overlay').classList.remove('open');
+      if (inputResolve) { inputResolve(val); inputResolve = null; }
+    };
+    document.getElementById('stdin-input').onkeydown = (e) => {
+      if (e.key === 'Enter') document.getElementById('stdin-submit').click();
+    };
+  }
+  window._pyrunner_input = (prompt) => {
+    return new Promise(resolve => {
+      document.getElementById('stdin-prompt').textContent = prompt || '请输入：';
+      document.getElementById('stdin-input').value = '';
+      document.getElementById('stdin-overlay').classList.add('open');
+      document.getElementById('stdin-input').focus();
+      inputResolve = resolve;
+    });
+  };
+
+  try {
+    const importLines = code.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/gm) ||[];
+    const pkgSet = new Set();
+    importLines.forEach(line => {
+      const m = line.match(/^\s*(?:import|from)\s+([a-zA-Z_][a-zA-Z0-9_]*)/);
+      if (m) pkgSet.add(m[1]);
+    });
+    const builtins = new Set([
+      'sys','os','io','re','math','time','json','random','datetime','collections',
+      'itertools','functools','pathlib','string','struct','hashlib','base64',
+      'copy','types','abc','enum','typing','dataclasses','contextlib','warnings',
+      'traceback','inspect','gc','weakref','threading','queue','subprocess',
+      'builtins','importlib','unittest','doctest','pprint','textwrap','shutil',
+      'tempfile','glob','fnmatch','stat','errno','signal','platform','sysconfig',
+      'asyncio','concurrent','multiprocessing','socket','ssl','http','urllib',
+      'email','html','xml','csv','sqlite3','decimal','fractions','statistics',
+      'array','bisect','heapq','operator','functools','cmath','numbers',
+      'codecs','unicodedata','locale','gettext','argparse','logging','unittest',
+      'difflib','readline','rlcompleter','zipfile','tarfile','gzip','bz2','lzma',
+      'zlib','pickle','shelve','marshal','dbm','venv','code','codeop',
+      'tokenize','token','ast','dis','compileall','py_compile','keyword',
+      'symtable','linecache','tokenize','colorsys','imghdr','wave','chunk',
+      'struct','select','selectors','socketserver','xmlrpc','ctypes','cffi',
+      'uuid','secrets','hmac','binascii','quopri','uu','netrc','ftplib',
+      'poplib','imaplib','smtplib','telnetlib','nntplib','calendar','sched',
+      'timezone','zoneinfo','profile','pstats','timeit','cProfile',
+      'trace','sys','atexit','faulthandler','site','sitecustomize',
+      'numpy','pandas','matplotlib','scipy','sklearn','scikit_learn',
+      'sympy','PIL','Pillow','statsmodels','micropip',
+      'js','pyodide','_pyodide','pyodide_http',
+      'cv2','skimage','plotly','bokeh','altair','seaborn','networkx','xgboost','lightgbm','requests','pyodide_http','pyodide-http','plotly.graph_objects','plotly.express','go','px',
+      'requests','aiohttp','flask','fastapi','pydantic','attrs','tqdm',
+      'np','pd','plt','sp','sns',
+    ]);
+    const toInstall = [...pkgSet].filter(p => !builtins.has(p));
+    if (toInstall.length > 0) {
+      appendOutput(`📦 检测到未预装的包，正在自动安装: ${toInstall.join(', ')}...\n`, 'info');
+      for (const pkg of toInstall) {
+        let installed = false;
+        try {
+          await pyodide.loadPackage(pkg);
+          appendOutput(`  ✓ ${pkg} 安装成功\n`, 'success');
+          installed = true;
+        } catch (_) {}
+
+        if (!installed) {
+          const pipName = pkg.replace(/-/g, '_');
+          try {
+            // 通过 globals.set 传参，避免字符串拼接注入
+            pyodide.globals.set('_auto_pkg', pkg);
+            pyodide.globals.set('_auto_pkg_mod', pipName);
+            await pyodide.runPythonAsync(
+              `import micropip as _mp, sys as _sys\n` +
+              `if _auto_pkg_mod not in _sys.modules:\n` +
+              `    await _mp.install(_auto_pkg)\n`
+            );
+            pyodide.globals.delete('_auto_pkg');
+            pyodide.globals.delete('_auto_pkg_mod');
+            appendOutput(`  ✓ ${pkg} 安装成功 (PyPI)\n`, 'success');
+            installed = true;
+          } catch (err2) {
+            appendOutput(`  ✗ ${pkg} 安装失败（可能含 C 扩展或网络问题）\n`, 'stderr');
+          }
+        }
+      }
+      refreshInstalledPkgs(); // 自动安装后刷新列表
+    }
+
+    const hasPlt = code.includes('matplotlib') || code.includes('plt.');
+    if (hasPlt) {
+      pyodide.runPython(`
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib as mpl, matplotlib.font_manager as fm
+import os
+if os.path.exists('/tmp/NotoSansSC.otf'):
+    _registered =[f.name for f in fm.fontManager.ttflist if 'Noto Sans SC' in f.name]
+    if not _registered:
+        fe = fm.FontEntry(fname='/tmp/NotoSansSC.otf', name='Noto Sans SC')
+        fm.fontManager.ttflist.insert(0, fe)
+    mpl.rcParams['font.family'] = 'Noto Sans SC'
+mpl.rcParams['axes.unicode_minus'] = False
+`);
+    }
+
+    const _edSync = document.getElementById('editor'); if(_edSync) tabs[activeTab].code = _edSync.value;
+    
+
+    const _userResult = await pyodide.runPythonAsync(code);
+
+    pyodide.runPython([
+      "import sys as _sys, io as _io, base64 as _b64",
+      "",
+      "_PNG_SIG = bytes([137,80,78,71,13,10,26,10])",
+      "_JPG_SIG = bytes([255,216,255])",
+      "_GIF_SIG = bytes([71,73,70,56])",
+      "_BMP_SIG = bytes([66,77])",
+      "_WEBP_SIG = bytes([82,73,70,70])",
+      "",
+      "def _to_png_b64(img_obj):",
+      "    _b = _io.BytesIO()",
+      "    img_obj.save(_b, format='PNG')",
+      "    _b.seek(0)",
+      "    return _b64.b64encode(_b.read()).decode()",
+      "",
+      "def _bytes_to_b64(raw):",
+      "    raw = bytes(raw)",
+      "    if raw[:8] == _PNG_SIG: mime='png'",
+      "    elif raw[:3] == _JPG_SIG: mime='jpeg'",
+      "    elif raw[:4] == _GIF_SIG: mime='gif'",
+      "    elif raw[:2] == _BMP_SIG: mime='bmp'",
+      "    elif raw[:4] == _WEBP_SIG and raw[8:12]==b'WEBP': mime='webp'",
+      "    else: return None, None",
+      "    return _b64.b64encode(raw).decode(), mime",
+      "",
+      "def _pyrunner_collect(extra=None):",
+      "    _images  =[]",
+      "    _plotlys =[]",
+      "    _seen    = set()",
+      "",
+      "    import __main__",
+      "    _ns = dict(vars(__main__))",
+      "",
+      "    def _absorb(v):",
+      "        if id(v) in _seen: return",
+      "        _seen.add(id(v))",
+      "",
+      "        try:",
+      "            from plotly.basedatatypes import BaseFigure as _BF",
+      "            if isinstance(v, _BF):",
+      "                _plotlys.append(v.to_json())",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            import matplotlib.figure as _mf",
+      "            if isinstance(v, _mf.Figure):",
+      "                _buf = _io.BytesIO()",
+      "                v.savefig(_buf, format='png', dpi=130, bbox_inches='tight')",
+      "                _buf.seek(0)",
+      "                _images.append((_b64.b64encode(_buf.read()).decode(), 'png'))",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            from PIL.Image import Image as _PI",
+      "            if isinstance(v, _PI):",
+      "                _images.append((_to_png_b64(v), 'png'))",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            import pandas as _pd",
+      "            if isinstance(v, _pd.DataFrame) and len(v) > 0:",
+      "                _html = v.to_html(max_rows=50, max_cols=20, border=0, classes=\'pr-table\', justify=\'left\')",
+      "                _images.append((\'__html__:\' + _html, \'html\'))",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            import pandas as _pd",
+      "            if isinstance(v, _pd.Series) and len(v) > 0:",
+      "                _dfs = v.reset_index()",
+      "                _dfs.columns =[str(c) for c in _dfs.columns]",
+      "                _html = _dfs.to_html(max_rows=50, border=0, classes='pr-table')",
+      "                _images.append(('__html__:' + _html, 'html'))",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            _fig2 = getattr(v, 'fig', None) or getattr(v, 'figure', None)",
+      "            if _fig2 is not None and hasattr(_fig2, 'savefig') and id(_fig2) not in _seen:",
+      "                _seen.add(id(_fig2))",
+      "                _buf2 = _io.BytesIO()",
+      "                _fig2.savefig(_buf2, format='png', dpi=130, bbox_inches='tight')",
+      "                _buf2.seek(0)",
+      "                _images.append((_b64.b64encode(_buf2.read()).decode(), 'png'))",
+      "                return",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            import numpy as _np",
+      "            if isinstance(v, _np.ndarray) and v.dtype in (_np.uint8, _np.float32, _np.float64):",
+      "                if v.ndim == 2 or (v.ndim == 3 and v.shape[2] in (3,4)):",
+      "                    from PIL import Image as _PILMod",
+      "                    if v.dtype != _np.uint8:",
+      "                        _mn,_mx = v.min(), v.max()",
+      "                        if _mx > _mn: v = ((v-_mn)/(_mx-_mn)*255).astype(_np.uint8)",
+      "                        else: v = _np.zeros_like(v, dtype=_np.uint8)",
+      "                    _img = _PILMod.fromarray(v)",
+      "                    _images.append((_to_png_b64(_img), 'png'))",
+      "                    return",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            if isinstance(v, (bytes, bytearray)) and len(v) > 100:",
+      "                _b64s, _mime = _bytes_to_b64(v)",
+      "                if _b64s: _images.append((_b64s, _mime))",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            if isinstance(v, _io.BytesIO):",
+      "                v.seek(0)",
+      "                raw = v.read()",
+      "                if len(raw) > 100:",
+      "                    _b64s, _mime = _bytes_to_b64(raw)",
+      "                    if _b64s: _images.append((_b64s, _mime))",
+      "        except Exception: pass",
+      "",
+      "        try:",
+      "            if isinstance(v, (list, tuple)) and 1 <= len(v) <= 64:",
+      "                from PIL.Image import Image as _PI2",
+      "                import numpy as _np2",
+      "                _all_img = all(isinstance(x, (_PI2, _np2.ndarray)) for x in v)",
+      "                if _all_img:",
+      "                    for _sub in v: _absorb(_sub)",
+      "        except Exception: pass",
+      "",
+      "    if extra is not None:",
+      "        _absorb(extra)",
+      "",
+      "    try:",
+      "        import matplotlib.pyplot as _plt",
+      "        for _fn in list(_plt.get_fignums()):",
+      "            _fig_obj = _plt.figure(_fn)",
+      "            if id(_fig_obj) not in _seen:",
+      "                _seen.add(id(_fig_obj))",
+      "                _buf = _io.BytesIO()",
+      "                _fig_obj.savefig(_buf, format='png', dpi=130, bbox_inches='tight')",
+      "                _buf.seek(0)",
+      "                _images.append((_b64.b64encode(_buf.read()).decode(), 'png'))",
+      "        _plt.close('all')",
+      "    except Exception: pass",
+      "",
+      "    return[_images, _plotlys]",
+    ].join("\n"));
+
+    pyodide.globals.set("_pyrunner_retval", _userResult ?? null);
+    const _raw = pyodide.runPython("_pyrunner_collect(extra=_pyrunner_retval)");
+    const _imgPairs   = _raw.get(0).toJs();
+    const plotlyJsons = _raw.get(1).toJs();
+    _raw.destroy();
+    const b64List = _imgPairs.map(p => Array.isArray(p) ? p[0] : p);
+    const mimeList = _imgPairs.map(p => Array.isArray(p) ? p[1] : 'png');
+
+    if (plotlyJsons && plotlyJsons.length > 0) {
+      if (!window.Plotly) {
+        appendOutput('⏳ 正在加载 Plotly.js...\n', 'info');
+        await new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.32.0/plotly.min.js';
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+      for (const pjson of plotlyJsons) {
+        const figData = JSON.parse(pjson);
+        figData.layout = figData.layout || {};
+        figData.layout.margin = { l:50, r:20, t:55, b:50 };
+        figData.layout.paper_bgcolor = 'transparent';
+        figData.layout.autosize = true;
+        figData.layout.font = Object.assign({ family:'Sora,system-ui,sans-serif', size:12 }, figData.layout.font||{});
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'width:100%;height:420px;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:10px 0;background:var(--surface);';
+        outputEl.appendChild(wrap);
+        await new Promise(r => requestAnimationFrame(r));
+        Plotly.newPlot(wrap, figData.data, figData.layout, {
+          responsive:true, displayModeBar:true,
+          modeBarButtonsToRemove:['sendDataToCloud','editInChartStudio','lasso2d','select2d'],
+          displaylogo:false
+        });
+      }
+    }
+
+    for (let _ri = 0; _ri < b64List.length; _ri++) {
+      const b64 = b64List[_ri], mime = mimeList[_ri] || 'png';
+      if (!b64) continue;
+      if (b64.startsWith('__html__:')) {
+        const wrap = document.createElement('div');
+        wrap.className = 'out-line image-out';
+        wrap.style.cssText = 'overflow-x:auto;margin:10px 0;border:1px solid var(--border);border-radius:10px;';
+        if (!document.getElementById('pr-table-style')) {
+          const st = document.createElement('style');
+          st.id = 'pr-table-style';
+          st.textContent = '.pr-table{border-collapse:collapse;font-family:var(--mono);font-size:12px;width:100%;}.pr-table th{background:var(--surface2);color:var(--text2);padding:6px 12px;text-align:left;border-bottom:1px solid var(--border);font-weight:500;white-space:nowrap;}.pr-table td{padding:5px 12px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}.pr-table tr:last-child td{border-bottom:none;}.pr-table tr:hover td{background:var(--surface2);}';
+          document.head.appendChild(st);
+        }
+        wrap.innerHTML = b64.slice(9);
+        outputEl.appendChild(wrap); continue;
+      }
+      if (b64.length < 100) continue;
+      const img = document.createElement('img');
+      img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;display:block;cursor:zoom-in;';
+      img.onerror = () => img.remove();
+      img.src = `data:image/${mime};base64,${b64}`;
+      img.onclick = () => {
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
+        const bi = document.createElement('img');
+        bi.src = img.src;
+        bi.style.cssText = 'max-width:100%;max-height:90dvh;border-radius:10px;';
+        const tip = document.createElement('div');
+        tip.textContent = '点击任意处或按 Esc 关闭';
+        tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;white-space:nowrap;';
+        ov.append(bi, tip);
+        const closeOv = () => {
+          ov.remove();
+          document.removeEventListener('keydown', escHandler);
+        };
+        const escHandler = (ev) => { if (ev.key === 'Escape') closeOv(); };
+        ov.onclick = closeOv;
+        document.addEventListener('keydown', escHandler);
+        document.body.appendChild(ov);
+      };
+      const wrap2 = document.createElement('span');
+      wrap2.className = 'out-line image-out';
+      wrap2.appendChild(img);
+      outputEl.appendChild(wrap2);
+    }
+
+    
+
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(3);
+    appendOutput(`\n✓ 运行完成，耗时 ${elapsed}s`, 'success');
+    setStatus('ready', '就绪');
+    // 保存运行历史快照
+    _saveOutputSnapshot();
+    // 刷新变量检查器
+    refreshVarsPanel();
+  } catch(e) {
+    if (_stopRequested) {
+      // 停止时强制关闭 stdin overlay，resolve 悬空的 Promise，防止泄漏
+      document.getElementById('stdin-overlay').classList.remove('open');
+      if (inputResolve) { inputResolve(''); inputResolve = null; }
+      appendOutput('\n⏹ 已手动停止执行', 'info');
+      setStatus('ready', '就绪');
+    } else {
+      const raw = e.message || String(e);
+      const lines = raw.split('\n');
+      const execIdx = lines.findIndex(l => l.includes('<exec>'));
+      const relevant = execIdx >= 0 ? lines.slice(execIdx) : lines.slice(-8);
+      appendOutput('\n' + relevant.join('\n'), 'stderr');
+      // 取 <exec> 之后最靠近错误点的行号，而非第一个（可能是解释器内部行）
+      const relevantText = relevant.join('\n');
+      const lineMatches = [...relevantText.matchAll(/line (\d+)/g)];
+      const lineNo = lineMatches.length > 0 ? parseInt(lineMatches[lineMatches.length - 1][1]) : 0;
+      if (lineNo > 0) highlightErrorLine(lineNo);
+      setStatus('error', '出错');
+      setTimeout(() => { setStatus('ready', '就绪'); clearErrorHighlight(); }, 4000);
+    }
+  }
+  isRunning = false;
+  _stopRequested = false;
+  setRunBtn(false);
+  // 解锁编辑器
+  const _edUnlock = document.getElementById('editor');
+  if (_edUnlock) { _edUnlock.readOnly = false; _edUnlock.style.opacity = ''; }
+  syncScroll();
+}
+
+// ── Output helpers ──
+let _outputRaf = null;
+let _outputLineCount = 0; // 计数器替代 querySelectorAll，避免密集输出时频繁 DOM 查询
+let _userScrolledUp = false; // 用户主动上滚时暂停自动跟随
+
+// 监听用户在输出区域的滚动行为
+function initOutputScrollListener() {
+  const s = document.getElementById('output-scroll');
+  if (!s) return;
+  s.addEventListener('scroll', () => {
+    const atBottom = s.scrollHeight - s.scrollTop - s.clientHeight < 32;
+    _userScrolledUp = !atBottom;
+  }, { passive: true });
+}
+
+function appendOutput(text, cls) {
+  const el = document.getElementById('output-content');
+  const ph = el.querySelector('.output-placeholder');
+  if (ph) ph.remove();
+  const parts = text.split('\n');
+  parts.forEach((part, i) => {
+    const isLast = i === parts.length - 1;
+    if (isLast && part === '') return;
+    const prev = el.lastChild;
+    if (i === 0 && prev && prev._lineOpen && prev._cls === (cls||'')) {
+      prev.textContent += part;
+      if (!isLast) { prev.textContent += '\n'; prev._lineOpen = false; }
+    } else {
+      const span = document.createElement('span');
+      span.className = 'out-line' + (cls ? ' ' + cls : '');
+      span.textContent = part + (!isLast ? '\n' : '');
+      span._cls = cls || '';
+      span._lineOpen = isLast;
+      el.appendChild(span);
+      _outputLineCount++;
+    }
+  });
+  scrollOutput();
+  trimOutputIfNeeded();
+}
+
+function clearOutput() {
+  document.getElementById('output-content').innerHTML = '';
+  _outputLineCount = 0;
+  _userScrolledUp = false;
+  // 清空输出时同步重置历史和变量面板
+  _runHistory = [];
+  _historyIdx = -1;
+  document.getElementById('history-nav').classList.remove('visible');
+  document.getElementById('vars-grid').innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
+  document.getElementById('vars-count').classList.remove('visible');
+  document.getElementById('vars-panel').classList.remove('has-vars', 'open');
+  _varsPanelOpen = false;
+  const lc = document.getElementById('output-linecount'); if(lc) lc.textContent='';
+}
+
+const MAX_OUTPUT_LINES = 2000;
+function trimOutputIfNeeded() {
+  if (_outputLineCount <= MAX_OUTPUT_LINES) return;
+  const el = document.getElementById('output-content');
+  const spans = el.querySelectorAll('.out-line');
+  const toRemove = spans.length - MAX_OUTPUT_LINES;
+  if (toRemove <= 0) return;
+  const notice = document.createElement('span');
+  notice.className = 'out-line info';
+  notice.textContent = `… 输出过多，已截断至最新 ${MAX_OUTPUT_LINES} 行 …\n`;
+  for (let i = 0; i < toRemove; i++) spans[i].remove();
+  el.insertBefore(notice, el.firstChild);
+  _outputLineCount = MAX_OUTPUT_LINES;
+}
+
+function scrollOutput() {
+  const s = document.getElementById('output-scroll');
+  if (_outputRaf) return;
+  _outputRaf = requestAnimationFrame(() => {
+    _outputRaf = null;
+    if (!_userScrolledUp) {
+      s.scrollTop = s.scrollHeight;
+    }
+    const lc = document.getElementById('output-linecount');
+    if (lc) lc.textContent = _outputLineCount > 0 ? _outputLineCount + ' 行' : '';
+  });
+}
+
+function setStatus(kind, text) {
+  const pill = document.getElementById('status');
+  const dot = pill.querySelector('.status-dot');
+  const txt = document.getElementById('status-text');
+  pill.className = 'status-pill ' + kind;
+  txt.textContent = text;
+  dot.className = 'status-dot' + (kind === 'loading' ? ' pulse' : '');
+}
+
+let _highlightRaf = null;
+function highlightCode() {
+  if (_highlightRaf) return;
+  _highlightRaf = requestAnimationFrame(() => {
+    _highlightRaf = null;
+    const ed = document.getElementById('editor');
+    const code = document.getElementById('highlight-code');
+    if (!ed || !code) return;
+    
+    const raw = ed.value;
+    let html = '';
+    if (typeof Prism !== 'undefined') {
+      html = Prism.highlight(raw, Prism.languages.python, 'python');
+    } else {
+      html = raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    
+    if (raw.endsWith('\n')) html += '&#8203;';
+    code.innerHTML = html;
+    // 高亮后同步位置，行号更新（内容变化时才到这里，不在 scroll 路径上）
+    syncScroll();
+    updateLineNumbers();
+  });
+}
+
+function updateLineNumbers() {
+  const ed = document.getElementById('editor');
+  const ln = document.getElementById('line-numbers');
+  if (!ed || !ln) return;
+  const lineCount = (ed.value.match(/\n/g) ||[]).length + 1;
+  if (ln._lastCount === lineCount) return;
+  ln._lastCount = lineCount;
+  let s = '';
+  for (let i = 1; i <= lineCount; i++) s += i + '\n';
+  ln.textContent = s;
+  // scrollTop 由 syncScroll 统一管理，这里不重复设置
+}
+
+// ── 滚动同步：移除延迟，实现真正的零延迟像素级同步 ──
+function syncScroll() {
+  const ed  = document.getElementById('editor');
+  const pre = document.getElementById('highlight-pre');
+  const ln  = document.getElementById('line-numbers');
+  if (!ed || !pre) return;
+  pre.scrollTop  = ed.scrollTop;
+  pre.scrollLeft = ed.scrollLeft;
+  if (ln) ln.scrollTop = ed.scrollTop;
+}
+
+window.addEventListener('resize', syncScroll);
+
+// ── 移动端软键盘适配 (visualViewport API) ──
+// iOS/Android 软键盘弹起时会压缩布局，用 visualViewport 动态修正 app 高度
+if (window.visualViewport) {
+  const _app = document.getElementById('app');
+  const _onViewportResize = () => {
+    // visualViewport.height 是键盘弹起后实际可见区域高度
+    const vh = window.visualViewport.height;
+    const offsetTop = window.visualViewport.offsetTop;
+    _app.style.height = vh + 'px';
+    _app.style.top = offsetTop + 'px';
+    _app.style.position = 'fixed';
+    _app.style.width = '100%';
+    syncScroll();
+  };
+  const _onViewportScroll = () => {
+    _app.style.top = window.visualViewport.offsetTop + 'px';
+  };
+  window.visualViewport.addEventListener('resize', _onViewportResize);
+  window.visualViewport.addEventListener('scroll', _onViewportScroll);
+  // 键盘收起时恢复
+  window.visualViewport.addEventListener('resize', () => {
+    if (window.visualViewport.height >= window.innerHeight * 0.85) {
+      _app.style.height = '';
+      _app.style.top = '';
+      _app.style.position = '';
+    }
+  });
+}
+
+let _errLineNo = 0;
+function highlightErrorLine(lineNo) {
+  clearErrorHighlight();
+  _errLineNo = lineNo;
+  _renderErrorHighlight();
+}
+function _renderErrorHighlight() {
+  if (!_errLineNo) return;
+  const ed = document.getElementById('editor');
+  const code = document.getElementById('highlight-code');
+  if (!ed || !code || typeof Prism === 'undefined') return;
+  const raw = ed.value;
+  const lines = Prism.highlight(raw, Prism.languages.python, 'python').split('\n');
+  if (_errLineNo >= 1 && _errLineNo <= lines.length) {
+    lines[_errLineNo - 1] = '<span class="editor-error-line">' + (lines[_errLineNo - 1] || '\u00a0') + '</span>';
+  }
+  let finalHtml = lines.join('\n');
+  if (raw.endsWith('\n')) finalHtml += '&#8203;';
+  code.innerHTML = finalHtml;
+  
+  const lineH = parseFloat(getComputedStyle(ed).lineHeight) || 22;
+  ed.scrollTop = Math.max(0, (_errLineNo - 4) * lineH);
+  syncScroll();
+}
+function clearErrorHighlight() {
+  _errLineNo = 0;
+  highlightCode(); 
+}
+
+function insertText(text) {
+  const ed = document.getElementById('editor');
+  if (!ed) return;
+  const s = ed.selectionStart, e = ed.selectionEnd;
+  ed.value = ed.value.substring(0, s) + text + ed.value.substring(e);
+  const pairMap = { '()':1, '[]':1, '{}':1, '""':1, "''":1 };
+  const cur = pairMap[text] ? s + 1 : s + text.length;
+  ed.setSelectionRange(cur, cur);
+  ed.focus();
+  highlightCode();
+  if (tabs[activeTab]) tabs[activeTab].code = ed.value;
+}
+
+function undoCode() {
+  const ed = document.getElementById('editor');
+  if (!ed) return;
+  ed.focus();
+  document.execCommand('undo');
+  highlightCode();
+}
+
+function initEditor(code) {
+  const ed = document.getElementById('editor');
+  if (!ed) return;
+  ed.value = code || _INITIAL_CODE;
+
+  ed.addEventListener('input', () => {
+    if (tabs[activeTab]) tabs[activeTab].code = ed.value;
+    highlightCode();
+    debounceSaveState();
+  });
+
+  ed.addEventListener('scroll', syncScroll, { passive: true });
+
+  ed.addEventListener('keydown', (e) => {
+    const s = e.target.selectionStart, end = e.target.selectionEnd;
+
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault(); toggleRun(); return;
+    }
+
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        const aLines = ed.value.split('\n');
+        let pos=0, sl=0, el2=0;
+        for(let i=0;i<aLines.length;i++){if(pos<=s)sl=i;if(pos<=end)el2=i;pos+=aLines[i].length+1;}
+        let remS=0,remTotal=0;
+        for(let i=sl;i<=el2;i++){const o=aLines[i];aLines[i]=o.replace(/^ {1,4}/,'');const d=o.length-aLines[i].length;if(i===sl)remS=d;remTotal+=d;}
+        ed.value=aLines.join('\n');
+        ed.setSelectionRange(Math.max(0,s-remS),Math.max(0,end-remTotal));
+      } else {
+        ed.value = ed.value.substring(0,s)+'    '+ed.value.substring(end);
+        ed.setSelectionRange(s+4, s+4);
+      }
+      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      highlightCode(); return;
+    }
+
+    const pairs = {'(':')', '[':']', '{':'}', '"':'"', "'":"'"};
+    if (pairs[e.key] && s === end) {
+      e.preventDefault();
+      ed.value = ed.value.substring(0,s) + e.key + pairs[e.key] + ed.value.substring(end);
+      ed.setSelectionRange(s+1, s+1);
+      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      highlightCode(); return;
+    }
+    if ([")", "]", "}"].includes(e.key) && ed.value[s] === e.key) {
+      e.preventDefault(); ed.setSelectionRange(s+1, s+1); return;
+    }
+    if (e.key === 'Backspace' && s === end && s > 0) {
+      const open = ed.value[s-1], close = ed.value[s];
+      if (pairs[open] === close) {
+        e.preventDefault();
+        ed.value = ed.value.substring(0,s-1) + ed.value.substring(s+1);
+        ed.setSelectionRange(s-1, s-1);
+        if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+        highlightCode(); return;
+      }
+    }
+    if (e.key === 'Enter' && settings.autoIndent) {
+      const lines = ed.value.substring(0,s).split('\n');
+      const last = lines[lines.length-1];
+      const indent = last.match(/^(\s*)/)[1];
+      const extra = last.trimEnd().endsWith(':') ? '    ' : '';
+      e.preventDefault();
+      ed.value = ed.value.substring(0,s) + '\n' + indent + extra + ed.value.substring(end);
+      const newPos = s + 1 + indent.length + extra.length;
+      ed.setSelectionRange(newPos, newPos);
+      if(tabs[activeTab]) tabs[activeTab].code = ed.value;
+      highlightCode(); return;
+    }
+  });
+  highlightCode();
+}
+
+// ── Tabs ──
+function startRenameTab(idx, div) {
+  const nameEl = div.querySelector('.tab-name'); if (!nameEl) return;
+  const old = tabs[idx].name;
+  const inp = document.createElement('input');
+  inp.value = old;
+  inp.style.cssText = 'width:80px;font-size:12px;font-family:var(--sans);font-weight:500;background:var(--surface3);border:1px solid var(--accent);border-radius:4px;padding:0 4px;color:var(--text);outline:none;';
+  nameEl.replaceWith(inp); inp.focus(); inp.select();
+  const commit = () => { const v = inp.value.trim()||old; tabs[idx].name = v.endsWith('.py')?v:v+'.py'; renderTabs(); debounceSaveState(); };
+  inp.onblur = commit;
+  inp.onkeydown = (e) => { if(e.key==='Enter'){e.preventDefault();inp.blur();} if(e.key==='Escape'){inp.value=old;inp.blur();} };
+}
+function addTab(name, code) {
+  // 新建文件名：扫描现有 tab 中 scriptN 的最大值，取 N+1，避免删掉又建出现跳号
+  const nextNum = () => {
+    const nums = tabs.map(t => { const m = t.name.match(/^script(\d+)\.py$/); return m ? parseInt(m[1]) : 0; });
+    return (nums.length ? Math.max(...nums) : 0) + 1;
+  };
+  tabs.push({ 
+    name: name || 'script' + nextNum() + '.py', 
+    code: code || '# 新文件\nprint("Hello, World!")\n' 
+  });
+  switchTab(tabs.length - 1);
+  renderTabs();
+}
+
+function switchTab(idx) {
+  const _edT = document.getElementById('editor');
+  if(_edT) tabs[activeTab].code = _edT.value;
+  activeTab = idx;
+  clearErrorHighlight(); // 切换 Tab 时清除旧 Tab 残留的错误高亮
+  if(_edT){ _edT.value = tabs[idx].code || ''; highlightCode(); }
+  renderTabs();
+}
+
+function removeTab(e, idx) {
+  e.stopPropagation();
+  if (tabs.length === 1) { showToast('至少保留一个标签页'); return; }
+  tabs.splice(idx, 1);
+  activeTab = Math.min(activeTab, tabs.length - 1);
+  const _edR = document.getElementById('editor'); if(_edR){ _edR.value = tabs[activeTab].code || ''; highlightCode(); }
+  renderTabs();
+}
+
+function renderTabs() {
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = '';
+  tabs.forEach((t, i) => {
+    const div = document.createElement('div');
+    div.className = 'tab' + (i === activeTab ? ' active' : '');
+    div.innerHTML = `<span style="width:6px;height:6px;border-radius:50%;background:${i===activeTab?'var(--accent)':'var(--text3)'};display:inline-block;flex-shrink:0;margin-right:2px;"></span><span class="tab-name">${t.name}</span><span class="tab-close" onclick="removeTab(event,${i})">×</span>`;
+    div.addEventListener('click', () => switchTab(i));
+    div.addEventListener('dblclick', (ev) => { ev.stopPropagation(); startRenameTab(i, div); });
+    bar.appendChild(div);
+  });
+  const add = document.createElement('div');
+  add.className = 'tab-add';
+  add.textContent = '+';
+  add.onclick = () => addTab();
+  bar.appendChild(add);
+}
+// ── Resizer ──
+let resizing = false, startY = 0, startH = 0;
+const resizer = document.getElementById('resizer');
+const outputPanel = document.getElementById('output-panel');
+resizer.addEventListener('pointerdown', (e) => {
+  resizing = true; startY = e.clientY; startH = outputPanel.offsetHeight;
+  resizer.classList.add('dragging');
+  e.preventDefault();
+});
+window.addEventListener('pointermove', (e) => {
+  if (!resizing) return;
+  const delta = startY - e.clientY;
+  const newH = Math.max(80, Math.min(window.innerHeight * 0.7, startH + delta));
+  outputPanel.style.height = newH + 'px';
+  syncScroll();
+});
+window.addEventListener('pointerup', () => { resizing = false; resizer.classList.remove('dragging'); });
+
+const SNIPPETS =[
+  {
+    icon: '🤖',
+    name: 'AI 7大门派竞速',
+    desc: '「Omega·概率重心」算法登场',
+    code: `import asyncio\nimport random\nimport math\n\n# AI 选手的通用核心算法函数\nasync def ai_racer(name, icon, strategy, target, max_val):\n    low, high = 1, max_val\n    attempts = 0\n    \n    while low <= high:\n        attempts += 1\n        length = high - low\n        \n        # ── 7 种不同的搜索策略 ──\n        if strategy == 'binary':\n            guess = low + length // 2\n        elif strategy == 'random':\n            guess = random.randint(low, high)\n        elif strategy == 'golden':\n            guess = low + int(0.618 * length)\n            if guess == high and length > 0: guess -= 1\n        elif strategy == 'ternary':\n            guess = low + length // 3\n        elif strategy == 'geometric':\n            guess = int(math.sqrt(low * high))\n        elif strategy == 'stoch_binary':\n            if length < 4: guess = low + length // 2\n            else: guess = random.randint(low + length//4, high - length//4)\n            \n        # --- 🤖 终极本命算法 (Omega_概率重心锚定) ---\n        elif strategy == 'ai_native':\n            if length < 8:\n                guess = low + length // 2\n            else:\n                # 震荡因子：利用正弦衰减在 40% ~ 60% 高频区域进行扫荡探测\n                oscillation = math.cos(attempts * 1.6) * 0.12 * (1.0 / (attempts**0.5))\n                pivot = 0.5 + oscillation\n                guess = low + int(length * pivot)\n                \n        # 边界冗余保护\n        guess = max(low, min(high, guess))\n            \n        print(f"{icon} {name} 步数{attempts:02d} | 猜: {guess:<7} (区间: {low}~{high})")\n        \n        # 极速运行：0.03秒停顿实现高频刷屏视觉效果\n        await asyncio.sleep(0.03)\n        \n        if guess == target:\n            print(f"\\n🏆 {icon} 【{name}】 率先命中🎯！耗时: {attempts} 步")\n            return (name, attempts, icon)\n        elif guess < target:\n            low = guess + 1\n        else:\n            high = guess - 1\n            \n    return (name, attempts, icon)\n\nasync def run_race():\n    print("🏁 「AI 算法大比拼」7 大门派·概率重心对抗赛")\n    print("💡 提示：Omega 算法已针对非边缘随机数分布进行了深度进化。")\n    \n    try:\n        max_input = await input("1. 请设定数字的最大范围 (推荐 10万): ")\n        max_val = int(max_input) if max_input.strip() else 100000\n        if max_val < 10: max_val = 100000\n    except:\n        max_val = 100000\n        print("⚠️ 输入无效，范围默认设定为 100000")\n        \n    try:\n        target_input = await input(f"2. 请指定目标数字(1-{max_val})，回车系统随机: ")\n        if target_input.strip():\n            target = int(target_input)\n            target = max(1, min(max_val, target)) \n            print(f"\\n🎯 目标已被设定为: {target}")\n        else:\n            target = random.randint(1, max_val)\n            print(f"\\n🎯 系统已在 1 到 {max_val} 之间随机生成了神秘数字。")\n    except:\n        target = random.randint(1, max_val)\n        print(f"\\n🎯 系统随机生成了神秘数字。")\n        \n    print("🚦 核心算力已就绪，7 大算法选手起跑：\\n")\n    \n    tasks =[\n        ai_racer("Alpha_二分法",   "🔵", "binary", target, max_val),\n        ai_racer("Beta_全随机",    "🟠", "random", target, max_val),\n        ai_racer("Gamma_黄金率",   "🟣", "golden", target, max_val),\n        ai_racer("Delta_三分法",   "🟢", "ternary", target, max_val),\n        ai_racer("Epsi_几何平均",  "🟡", "geometric", target, max_val),\n        ai_racer("Zeta_随机二分",  "🔴", "stoch_binary", target, max_val),\n        ai_racer("Omega_概率重心", "🧠", "ai_native", target, max_val)\n    ]\n    \n    # 真正的高并发异步竞速赛\n    results = await asyncio.gather(*tasks)\n    \n    print("\\n📊 【最终战报统计】")\n    results.sort(key=lambda x: x[1])  # 按步数优劣排序\n    \n    medals =["🥇", "🥈", "🥉", "🏅", "🏅", "🏅", "🏅"]\n    for i, (name, steps, icon) in enumerate(results):\n        print(f" {medals[i]} 第{i+1}名: {icon} {name:<14} (共用时 {steps:02d} 步)")\n\n# 异步启动器\nasyncio.ensure_future(run_race())\n`
+  },
+  {
+    icon: '🎲',
+    name: '猜数字游戏',
+    desc: '智能温感提示的互动小游戏',
+    code: `import random\n\nprint("🎮 欢迎来到猜数字游戏！(1-100)")\ntarget = random.randint(1, 100)\nattempts = 0\nmsg = "请输入你的猜测："\n\nwhile True:\n    try:\n        guess_str = await input(msg)\n        guess = int(guess_str)\n        attempts += 1\n        diff = guess - target\n        \n        if diff > 10:\n            msg = f"你猜了 {guess}，太多了！再试一次："\n            print(msg)\n        elif 0 < diff <= 10:\n            msg = f"你猜了 {guess}，多了点（快接近了）！再试一次："\n            print(msg)\n        elif diff < -10:\n            msg = f"你猜了 {guess}，太少了！再试一次："\n            print(msg)\n        elif -10 <= diff < 0:\n            msg = f"你猜了 {guess}，少了点（快接近了）！再试一次："\n            print(msg)\n        else:\n            print(f"\\n🎉 恭喜你！只用了 {attempts} 次就猜中了数字 {target}！")\n            break\n    except ValueError:\n        msg = "⚠️ 格式错误，请输入有效的整数："\n        print(msg)\n`
+  },
+  {
+    icon: '🦋',
+    name: '蝴蝶曲线',
+    desc: 'Matplotlib 极坐标参数方程',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\n\n# 经典数学之美：蝴蝶曲线 (Butterfly Curve)\n# 发现者：Temple H. Fay (1989)\n\nt = np.linspace(0, 12 * np.pi, 2000)\nx = np.sin(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\ny = np.cos(t) * (np.exp(np.cos(t)) - 2 * np.cos(4 * t) - np.sin(t / 12)**5)\n\nplt.figure(figsize=(6, 6))\nplt.plot(x, y, color='#9C6A10', linewidth=1.2, alpha=0.9)\nplt.title('数学之美：蝴蝶曲线', fontsize=14, pad=15)\nplt.axis('off')\nplt.show()\n`
+  },
+  {
+    icon: '🤖',
+    name: 'K-Means 聚类',
+    desc: 'Scikit-learn 机器学习无监督分类',
+    code: `import matplotlib.pyplot as plt\nfrom sklearn.datasets import make_blobs\nfrom sklearn.cluster import KMeans\n\nprint("正在生成随机聚类数据...")\n# 生成 300 个样本，分布在 4 个中心点附近\nX, y_true = make_blobs(n_samples=300, centers=4, cluster_std=0.60, random_state=0)\n\nprint("🤖 正在使用 K-Means 算法进行无监督学习聚类...")\nkmeans = KMeans(n_clusters=4, n_init='auto', random_state=42)\nkmeans.fit(X)\ny_kmeans = kmeans.predict(X)\n\n# 绘制散点图\nplt.figure(figsize=(8, 6))\nplt.scatter(X[:, 0], X[:, 1], c=y_kmeans, s=30, cmap='viridis', alpha=0.7, edgecolor='k')\n\n# 标注聚类中心点\ncenters = kmeans.cluster_centers_\nplt.scatter(centers[:, 0], centers[:, 1], c='red', s=200, alpha=0.9, marker='X', label='Centroids')\n\nplt.title("Scikit-Learn: K-Means Clustering", fontsize=14, pad=15)\nplt.legend()\nplt.grid(True, alpha=0.3)\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '📈',
+    name: '金融时间序列',
+    desc: 'Pandas 数据处理与动态折线图',
+    code: `import pandas as pd\nimport numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在使用 Pandas 生成模拟金融时间序列数据...")\n\n# 生成100天的日期索引\ndates = pd.date_range('20250101', periods=100)\n# 生成4只随机股票的波动数据并累加计算累计收益\ndf = pd.DataFrame(np.random.randn(100, 4), index=dates, columns=['Apple', 'Google', 'Microsoft', 'Tesla'])\ndf = df.cumsum()\n\n# 绘制 DataFrame\nax = df.plot(figsize=(10, 5), linewidth=2, colormap='tab10')\nplt.title("Pandas 模拟股票走势分析", fontsize=14, pad=15)\nplt.xlabel("Date")\nplt.ylabel("Cumulative Returns")\nplt.grid(True, alpha=0.3)\nplt.legend(loc='upper left')\nplt.tight_layout()\nplt.show()\n\nprint("\\n尾部数据预览 (df.tail()):")\ndf.tail()\n`
+  },
+  
+{
+    icon: '☀️',
+    name: 'Plotly 全景旭日图',
+    desc: '探索全球人口数据的极致交互动画',
+    code: `import plotly.express as px\n\nprint("🌌 正在渲染【全球人口与寿命】交互式旭日图...")\nprint("💡 体验提示：")\nprint("   1. 👆 点击【大洲】扇区，丝滑潜入该洲的所有国家！")\nprint("   2. 🎯 将鼠标悬停在色块上，查看详细数据。")\nprint("   3. ⏺️ 点击最中心的圆点，即可退回上一层级。\\n")\n\n# 获取 Plotly 内置的真实世界数据集 (142个国家)\ndf = px.data.gapminder().query("year == 2007")\n\n# 创建高阶旭日图：包含面积大小与颜色深度的双重映射\nfig = px.sunburst(\n    df,\n    path=['continent', 'country'],     # 层级结构：大洲 -> 国家\n    values='pop',                      # 扇区面积 = 人口总数\n    color='lifeExp',                   # 扇区颜色 = 预期寿命\n    hover_data=['gdpPercap'],          # 悬停显示 = 人均GDP\n    color_continuous_scale='Plasma',   # 选用极具科技感的 Plasma 渐变色\n    color_continuous_midpoint=65       # 颜色渐变中点(65岁)\n)\n\n# UI 深度定制与美化\nfig.update_layout(\n    title={'text': "🌍 2007全球人口分布与寿命全景图", 'x': 0.5, 'xanchor': 'center'},\n    margin=dict(t=50, l=10, r=10, b=10),\n    height=500,\n    paper_bgcolor='rgba(0,0,0,0)'      # 透明背景完美融合亮/暗主题\n)\n\n# 优化扇区边框和文字显示效果\nfig.update_traces(\n    textinfo='label+percent parent',   # 显示名称和在父级中的占比\n    insidetextorientation='radial',    # 文字呈放射状排列\n    marker=dict(line=dict(color='rgba(255,255,255,0.5)', width=0.8)), # 添加精致描边\n    hovertemplate="<b>%{label}</b><br>👥 人口: %{value:,.0f}<br>🧬 预期寿命: %{color:.1f} 岁<extra></extra>"\n)\n\nfig\n`
+  },
+  {
+    icon: '🔥',
+    name: '相关性热力图',
+    desc: 'Seaborn 高级统计图表生成',
+    code: `import seaborn as sns\nimport matplotlib.pyplot as plt\nimport pandas as pd\nimport numpy as np\n\nprint("正在生成相关性热力图...")\n\n# 生成一组模拟的随机相关系数矩阵\nnp.random.seed(42)\ndata = pd.DataFrame(np.random.randn(10, 10), columns=[f'F{i}' for i in range(1, 11)])\ncorr = data.corr()\n\nplt.figure(figsize=(8, 6))\n# 绘制热力图\nsns.heatmap(corr, annot=True, cmap="coolwarm", fmt=".2f", cbar=True, square=True)\n\nplt.title("Seaborn Correlation Heatmap", fontsize=14, pad=15)\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🧬',
+    name: '生命游戏 (动画)',
+    desc: 'Conway 从简单规则涌现复杂性',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\nimport matplotlib.animation as animation\n\nprint("正在初始化 Conway 的生命游戏动画...")\nprint("生命游戏规则极其简单：")\nprint("1. 活细胞邻居 < 2 → 死亡（孤独）")\nprint("2. 活细胞邻居 2~3 → 存活")\nprint("3. 活细胞邻居 > 3 → 死亡（过密）")\nprint("4. 死细胞邻居 = 3 → 复活（繁殖）\\n")\n\nN = 60\n\ndef step(grid):\n    # 用卷积快速计算每个细胞的存活邻居数\n    neighbors = sum(\n        np.roll(np.roll(grid, i, 0), j, 1)\n        for i in (-1, 0, 1) for j in (-1, 0, 1)\n        if (i != 0 or j != 0)\n    )\n    return ((neighbors == 3) | (grid & (neighbors == 2))).astype(int)\n\n# 初始化：纯净网格\ngrid = np.zeros((N, N), dtype=int)\n\n# 植入经典的 Gosper 滑翔机炮\nglider_gun =[\n    (5,1),(5,2),(6,1),(6,2),\n    (5,11),(6,11),(7,11),(4,12),(8,12),(3,13),(9,13),(3,14),(9,14),\n    (6,15),(4,16),(8,16),(5,17),(6,17),(7,17),(6,18),\n    (3,21),(4,21),(5,21),(3,22),(4,22),(5,22),(2,23),(6,23),\n    (1,25),(2,25),(6,25),(7,25),\n    (3,35),(4,35),(3,36),(4,36),\n]\nfor r, c in glider_gun:\n    if r < N and c < N:\n        grid[r, c] = 1\n\nfig, ax = plt.subplots(figsize=(6, 6))\nimg = ax.imshow(grid, cmap='Greens', vmin=0, vmax=1, interpolation='nearest')\nax.set_title("Gosper 滑翔机炮 (Gosper Glider Gun)", fontsize=13, pad=15)\nax.axis('off')\n\nstate = {'grid': grid}\n\ndef update(frame):\n    state['grid'] = step(state['grid'])\n    img.set_data(state['grid'])\n    return [img]\n\n# 渲染前 120 帧\nani = animation.FuncAnimation(fig, update, frames=120, interval=60, blit=True)\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🌐',
+    name: '异步 API 抓取',
+    desc: '利用 Fetch 获取外网实时 JSON 数据',
+    code: `import asyncio\nfrom pyodide.http import pyfetch\nimport json\n\nasync def get_space_news():\n    print("🚀 正在通过 Pyodide Fetch 请求宇宙新闻 API...")\n    try:\n        # 免费的太空新闻 API\n        response = await pyfetch("https://api.spaceflightnewsapi.net/v4/articles/?limit=3")\n        data = await response.json()\n        \n        print("\\n📰 【最新太空新闻】\\n" + "="*40)\n        for i, article in enumerate(data['results'], 1):\n            print(f"{i}. {article['title']}")\n            print(f"   来源: {article['news_site']}")\n            print(f"   发布时间: {article['published_at'][:10]}")\n            print("-" * 40)\n    except Exception as e:\n        print(f"请求失败，请检查网络环境。错误信息: {e}")\n\n# 在 Pyodide 环境中直接通过 asyncio.ensure_future 运行\nasyncio.ensure_future(get_space_news())\n`
+  },
+  {
+    icon: '💖',
+    name: '3D 数学心形',
+    desc: 'Matplotlib 3D 曲面与参数方程',
+    code: `import matplotlib.pyplot as plt\nimport numpy as np\n\nprint("正在利用参数方程绘制 3D 心形曲面...")\n\nfig = plt.figure(figsize=(8, 8))\nax = fig.add_subplot(111, projection='3d')\n\n# 构造参数网络\nu = np.linspace(0, 2 * np.pi, 100)\nv = np.linspace(0, np.pi, 100)\nu, v = np.meshgrid(u, v)\n\n# 3D 心的参数方程\nx = 16 * (np.sin(u)**3) * np.sin(v)\ny = (13 * np.cos(u) - 5 * np.cos(2*u) - 2 * np.cos(3*u) - np.cos(4*u)) * np.sin(v)\nz = 10 * np.cos(v)\n\n# 绘制曲面\nax.plot_surface(x, y, z, color='crimson', edgecolor='none', alpha=0.9)\nax.set_title("3D Mathematics Heart", fontsize=15)\nax.axis('off')\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🕸️',
+    name: 'PageRank 算法',
+    desc: 'NetworkX 生成无标度网络并计算节点权重',
+    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\nprint("正在生成 Barabási–Albert 无标度网络 (Scale-Free Network)...")\n# 生成 60 个节点的无标度网络（模拟现实世界如互联网的链接方式）\nG = nx.barabasi_albert_graph(60, 2, seed=42)\n\nprint("正在计算所有节点的 PageRank 值...")\npr = nx.pagerank(G, alpha=0.85)\n\nplt.figure(figsize=(8, 8))\n# 使用 spring 布局对节点进行排版\npos = nx.spring_layout(G, seed=42)\n\n# 将 PageRank 值放大用作节点的显示大小\nnode_sizes =[v * 15000 for v in pr.values()]\n\nnx.draw_networkx(\n    G, pos, \n    node_size=node_sizes, \n    node_color=list(pr.values()), \n    cmap=plt.cm.Blues, \n    with_labels=False, \n    alpha=0.8, \n    edge_color="#cccccc"\n)\n\nplt.title("PageRank on Scale-Free Network", fontsize=14)\nplt.axis('off')\nplt.tight_layout()\nplt.show()\n\nprint("图中节点越大、颜色越深，代表其 PageRank 权重越高，即在网络中处于越核心的位置。")\n`
+  },
+  {
+    icon: '📐',
+    name: '谢尔宾斯基分形',
+    desc: '利用混沌游戏算法急速生成分形三角形',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\n\n# 混沌游戏 (Chaos Game) 算法：\n# 1. 取一个三角形的三个顶点\n# 2. 随机在内部选一个起始点 P\n# 3. 随机选一个顶点，将 P 移动到 P 与该顶点连线的中点，并打点\n# 4. 重复上万次，结果居然会呈现出高度对称的分形图形！\n\nprint("正在进行混沌游戏随机打点 (15000次)...")\nn = 15000\n\n# 定义三个顶点\nvertices = np.array([[0, 0],[1, 0], [0.5, np.sqrt(3)/2]])\n\np = np.array([0.5, 0.5])\npoints = np.zeros((n, 2))\n\nfor i in range(n):\n    v = vertices[np.random.randint(3)]\n    p = (p + v) / 2\n    points[i] = p\n\nplt.figure(figsize=(7, 7))\n# 丢弃最开始的 10 个点以消除初始误差，绘制散点\nplt.scatter(points[10:,0], points[10:,1], s=0.2, color='#2A7A4A')\nplt.title("Sierpinski Triangle (Chaos Game)", fontsize=14, pad=15)\nplt.axis('off')\nplt.tight_layout()\nplt.show()\n`
+  },
+  {
+    icon: '🌿',
+    name: '逻辑斯谛分岔图',
+    desc: '探索种群繁衍背后的混沌理论',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\n\nprint("正在计算 Logistic Map (逻辑斯谛映射) 分岔过程...")\nprint("方程: X_next = R * X * (1 - X)")\n\n# R 是繁殖率参数\nn = 10000\nR = np.linspace(2.5, 4.0, n)\n\niterations = 1000\nlast = 100  # 我们只保留最后100次迭代的结果以观察其稳定态\nx = 1e-5 * np.ones(n)\n\nplt.figure(figsize=(10, 6))\n\nfor i in range(iterations):\n    x = R * x * (1 - x)\n    # 当迭代进入尾声时开始记录绘制\n    if i >= (iterations - last):\n        plt.plot(R, x, ',k', alpha=0.03)\n\nplt.title("Bifurcation Diagram of the Logistic Map", fontsize=14)\nplt.xlabel("Growth Rate (R)", fontsize=11)\nplt.ylabel("Population (X)", fontsize=11)\nplt.grid(True, alpha=0.2)\nplt.tight_layout()\nplt.show()\n\nprint("💡 看点：随着参数 R 增大，种群数量最终从稳定在一个值，分岔为在两个值之间震荡，最终走向完全的混沌状态。")\n`
+  },
+  {
+    icon: '🌌',
+    name: 'Plotly 3D 曲面',
+    desc: '可随意拖拽旋转的 3D 互动图表',
+    code: `import plotly.graph_objects as go\nimport numpy as np\n\nx = np.linspace(-5, 5, 50)\ny = np.linspace(-5, 5, 50)\nx, y = np.meshgrid(x, y)\n\n# 构造类似于滴水波纹的峰值函数\nz = np.sin(np.sqrt(x**2 + y**2))\n\nfig = go.Figure(data=[go.Surface(z=z, x=x, y=y, colorscale='Viridis')])\nfig.update_layout(title='3D 波动曲面 (手指拖拽可旋转)', autosize=False,\n                  width=600, height=500, margin=dict(l=65, r=50, b=65, t=90))\nfig\n`
+  },
+  {
+    icon: '🌀',
+    name: '洛伦兹吸引子',
+    desc: '混沌理论：蝴蝶效应的震撼呈现',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.integrate import solve_ivp\n\n# 洛伦兹方程：描述大气对流的混沌系统\n# 任何微小初始扰动都会导致完全不同的轨迹\ndef lorenz(t, s, sigma=10, beta=8/3, rho=28):\n    x, y, z = s\n    return[sigma * (y - x), x * (rho - z) - y, x * y - beta * z]\n\n# 两条初始条件仅相差 1e-8 的轨迹，演示蝴蝶效应\nresults =[]\nfor eps in[0.0, 1e-8]:\n    sol = solve_ivp(\n        lorenz, (0, 40),[1.0 + eps, 1.0, 1.0],\n        t_eval=np.linspace(0, 40, 8000), rtol=1e-9\n    )\n    results.append(sol)\n\nfig = plt.figure(figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\n\n# 左图：吸引子全貌\nax1 = fig.add_subplot(121, projection='3d')\nax1.set_facecolor('#0d1117')\nx, y, z = results[0].y\nax1.scatter(x, y, z, c=results[0].t, cmap='plasma', s=0.3, alpha=0.6)\nax1.set_title('洛伦兹吸引子', color='white', fontsize=11)\nfor spine in[ax1.xaxis, ax1.yaxis, ax1.zaxis]: spine.pane.fill = False\nax1.tick_params(colors='#555')\n\n# 右图：蝴蝶效应——两条轨迹随时间的偏离\nax2 = fig.add_subplot(122)\nax2.set_facecolor('#0d1117')\nt = results[0].t\ndist = np.linalg.norm(results[0].y - results[1].y, axis=0)\nax2.semilogy(t, dist + 1e-15, color='#ff6b6b', linewidth=1)\nax2.set_title('蝴蝶效应：初始差 1e-8 的两轨迹偏离距离', color='white', fontsize=9)\nax2.set_xlabel('时间', color='#888')\nax2.set_ylabel('轨迹间距 (对数轴)', color='#888')\nax2.tick_params(colors='#666')\nfor s in ax2.spines.values(): s.set_edgecolor('#333')\nax2.grid(True, alpha=0.15)\n\nplt.tight_layout()\nplt.show()\n\nprint("左图：同一吸引子被无数轨迹填满，却从不重复——这就是确定性混沌。")\nprint("右图：两条几乎相同的起点，约20个时间单位后轨迹完全发散。")\n`
+  },
+  {
+    icon: '🧬',
+    name: '高精度分形',
+    desc: '无穷细节的边界：曼德勃罗特集合',
+    code: `import numpy as np\nfrom PIL import Image\nimport time\n\n# 曼德勃罗特集合对于复平面上的点 c，反复迭代 z = z² + c\n# 但边界处的结构极其精妙复杂，是真正的数学奇迹。\nW, H = 800, 600\nMAX_ITER = 120\nx_min, x_max = -2.0, 0.5\ny_min, y_max = -1.25, 1.25\n\nprint(f"正在全速渲染 {W}×{H} 曼德勃罗特集合分形图...")\nstart = time.time()\n\nx = np.linspace(x_min, x_max, W)\ny = np.linspace(y_min, y_max, H)\nC = x[np.newaxis, :] + 1j * y[:, np.newaxis]\nZ = np.zeros_like(C)\nM = np.zeros(C.shape, dtype=float)\nmask = np.ones(C.shape, dtype=bool)\n\nfor i in range(MAX_ITER):\n    Z[mask] = Z[mask] ** 2 + C[mask]\n    escaped = mask & (np.abs(Z) > 2)\n    # 平滑着色补偿\n    M[escaped] = i + 1 - np.log2(np.log2(np.abs(Z[escaped]) + 1e-5))\n    mask[escaped] = False\n\nprint(f"核心矩阵计算完成，耗时 {time.time()-start:.2f}s")\n\n# 蓝紫-金色调色板映射\nM_norm = (M / MAX_ITER) ** 0.42\nM_norm = (M_norm - M_norm.min()) / (M_norm.max() - M_norm.min() + 1e-9)\nr = np.uint8(np.clip(9   * (1-M_norm) * M_norm**3 * 255, 0, 255))\ng = np.uint8(np.clip(15  * (1-M_norm)**2 * M_norm**2 * 255, 0, 255))\nb = np.uint8(np.clip(8.5 * (1-M_norm)**3 * M_norm   * 255, 0, 255))\nrgb = np.stack([r, g, b], axis=-1)\n\nimg = Image.fromarray(rgb)\nprint(f"集合内点（纯黑色区域）占比: {(~mask).mean():.1%}")\nimg\n`
+  },
+  {
+    icon: '🏃',
+    name: '排序算法赛跑',
+    desc: '横向对比冒泡/插入/快排/归并性能',
+    code: `import random\nimport matplotlib.pyplot as plt\n\n# 算法的真正差异在数据规模变大时才能体现。\n# 这里用"核心操作次数"作为公平指标，排除底层语言实现差异。\n\ndef bubble_sort(arr):\n    a, ops = arr[:], 0\n    n = len(a)\n    for i in range(n):\n        for j in range(n - i - 1):\n            ops += 1\n            if a[j] > a[j+1]:\n                a[j], a[j+1] = a[j+1], a[j]\n    return ops\n\ndef merge_sort(arr):\n    ops = [0]\n    def _merge(a):\n        if len(a) <= 1: return a\n        mid = len(a) // 2\n        L, R = _merge(a[:mid]), _merge(a[mid:])\n        result, i, j =[], 0, 0\n        while i < len(L) and j < len(R):\n            ops[0] += 1\n            if L[i] <= R[j]: result.append(L[i]); i += 1\n            else:             result.append(R[j]); j += 1\n        return result + L[i:] + R[j:]\n    _merge(arr[:])\n    return ops[0]\n\ndef quick_sort(arr):\n    ops = [0]\n    def _qs(a):\n        if len(a) <= 1: return a\n        pivot = a[len(a) // 2]\n        left =[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x < pivot]\n        mid  =[x for x in a if x == pivot]\n        right=[x for x in a if (ops.__setitem__(0, ops[0]+1) or True) and x > pivot]\n        return _qs(left) + mid + _qs(right)\n    _qs(arr[:])\n    return ops[0]\n\n# 测试不同规模\nsizes  =[10, 50, 100, 200, 500, 1000]\nalgos  =[('冒泡排序 O(n²)',    '#ff6b6b', bubble_sort),\n          ('归并排序 O(n log n)', '#58a6ff', merge_sort),\n          ('快速排序 O(n log n)', '#3fb950', quick_sort)]\n\nresults = {name:[] for name, _, _ in algos}\nfor size in sizes:\n    arr = random.sample(range(size * 10), size)\n    for name, _, fn in algos:\n        results[name].append(fn(arr))\n\nfig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))\nfig.patch.set_facecolor('#0d1117')\nfor ax in [ax1, ax2]:\n    ax.set_facecolor('#0d1117')\n    ax.tick_params(colors='#666')\n    for s in ax.spines.values(): s.set_edgecolor('#333')\n    ax.grid(True, alpha=0.1)\n\nfor name, color, _ in algos:\n    ax1.plot(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n    ax2.semilogy(sizes, results[name], 'o-', label=name, color=color, linewidth=1.8, ms=5)\n\nfor ax, title in[(ax1, '核心对比次数（线性轴）'), (ax2, '核心对比次数（对数轴）')]:\n    ax.set_xlabel('数组大小 n', color='#aaa')\n    ax.set_ylabel('比较次数', color='#aaa')\n    ax.set_title(title, color='white')\n    ax.legend(facecolor='#1a1a2e', labelcolor='white', fontsize=8)\n\nplt.tight_layout()\nplt.show()\n\nprint("📊 规模 n=1000 时的最终比较次数：")\nfor name, _, _ in algos:\n    print(f"  {name:<18}: {results[name][-1]:>8,} 次")\n`
+  },
+  {
+    icon: '🕸️',
+    name: '小世界网络',
+    desc: '六度分隔理论：NetworkX 图论建模',
+    code: `import networkx as nx\nimport matplotlib.pyplot as plt\n\n# 「六度分隔」假说：世界上任意两人之间，最多通过6个中间人就能相连。\n# Watts-Strogatz 小世界模型能精确再现这种结构。\n\n# 生成三种网络对比\nN = 60\nGs = {\n    '规则环形网络\\n(只能认识邻居)': nx.watts_strogatz_graph(N, 6, 0.0, seed=42),\n    '小世界网络\\n(极少量人随机结识远方朋友)': nx.watts_strogatz_graph(N, 6, 0.1, seed=42),\n    '完全随机网络\\n(全屏乱点谱)':  nx.watts_strogatz_graph(N, 6, 1.0, seed=42),\n}\n\nfig, axes = plt.subplots(1, 3, figsize=(13, 5))\nfig.patch.set_facecolor('#0d1117')\ncolors =['#58a6ff', '#3fb950', '#ff6b6b']\n\nfor ax, (name, G), color in zip(axes, Gs.items(), colors):\n    ax.set_facecolor('#0d1117')\n    pos = nx.circular_layout(G)\n\n    # 计算网络指标\n    C = nx.average_clustering(G)\n    L = nx.average_shortest_path_length(G)\n\n    # 用度数映射节点大小\n    degrees = dict(G.degree())\n    node_sizes =[degrees[n] * 8 + 20 for n in G.nodes()]\n\n    nx.draw_networkx_edges(G, pos, ax=ax, alpha=0.15, edge_color='#444', width=0.5)\n    nx.draw_networkx_nodes(G, pos, ax=ax, node_size=node_sizes, node_color=color, alpha=0.85)\n    ax.set_title(name, color='white', fontsize=10, pad=10)\n    ax.text(0.5, -0.05, f'聚集度 C = {C:.3f}\\n相隔度 L = {L:.2f}', \n            transform=ax.transAxes, ha='center', color='#aaa', fontsize=9)\n    ax.axis('off')\n\nplt.tight_layout()\nplt.show()\n\nprint("🤯 小世界网络（中图）的奇妙之处：")\nprint("仅仅有 10% 的人结交了远方的朋友，就能让整个社交圈的平均相隔人数从极高骤降到极低！")\n`
+  },
+  {
+    icon: '🎵',
+    name: '声音频谱分析',
+    desc: '生成 Cmaj7 和弦并用 FFT 拆解和声',
+    code: `import numpy as np\nimport matplotlib.pyplot as plt\nfrom scipy.fft import rfft, rfftfreq\n\n# 音乐和声的数学本质：和谐的音程对应简单整数比的频率\n# C大七和弦 (Cmaj7) 的构造\nsr = 44100  # 采样率\nt = np.linspace(0, 1.0, sr, endpoint=False)\n\nnotes = {\n    'C4 (Do)': 261.63,\n    'E4 (Mi)': 329.63,\n    'G4 (Sol)': 392.00,\n    'B4 (Ti)': 493.88,\n}\n\n# 生成每个音符的正弦波，并叠加成和弦\nwaves = {name: np.sin(2 * np.pi * freq * t) for name, freq in notes.items()}\nchord = sum(waves.values()) / len(waves)\n\nfig, (ax_t, ax_f) = plt.subplots(2, 1, figsize=(10, 6))\nfig.patch.set_facecolor('#0d1117')\nfor ax in[ax_t, ax_f]:\n    ax.set_facecolor('#0d1117')\n    ax.tick_params(colors='#666')\n    for s in ax.spines.values(): s.set_edgecolor('#333')\n    ax.grid(True, alpha=0.1)\n\n# 上图：时域波形（叠加后的错综复杂）\nax_t.plot(t[:1000] * 1000, chord[:1000], color='#ff6b6b', linewidth=1.2)\nax_t.set_title('Cmaj7 和弦的时域复合波形 (前 20 毫秒)', color='white')\nax_t.set_xlabel('时间 (ms)', color='#aaa')\nax_t.set_ylabel('振幅', color='#aaa')\n\n# 下图：频域波形（FFT 快速傅里叶变换，一秒拆解和声！）\nyf = np.abs(rfft(chord)) * 2 / sr\nxf = rfftfreq(sr, 1 / sr)\nmask = xf < 800  # 只看 800Hz 以下\nax_f.plot(xf[mask], yf[mask], color='#58a6ff', linewidth=1.5)\nax_f.set_title('Cmaj7 的频域频谱 (FFT 拆解分析)', color='white')\nax_f.set_xlabel('频率 (Hz)', color='#aaa')\nax_f.set_ylabel('能量强度', color='#aaa')\n\n# 标出峰值\nfor name, freq in notes.items():\n    ax_f.axvline(freq, color='#3fb950', linestyle='--', alpha=0.5)\n    ax_f.text(freq + 5, 0.4, name, color='#3fb950', rotation=90)\n\nplt.tight_layout()\nplt.show()\nprint("上方是你听到的“复杂波形”，下方是傅里叶变换(FFT)像棱镜一样把它拆解出来的“纯粹频率”。")\n`
+  },
+  {
+    icon: '🔐',
+    name: 'RSA 加密原理',
+    desc: '利用大素数原理从零手搓非对称加密',
+    code: `import random\nimport math\n\n# RSA 的数学基础：\n# 两个大素数相乘极快，但把乘积拆解回两个素数却极其困难。\n# 这种\"单向性\"构成了现代互联网（HTTPS）安全的基础。\n\ndef is_prime(n, k=10):\n    if n < 2: return False\n    if n in (2, 3): return True\n    if n % 2 == 0: return False\n    r, d = 0, n - 1\n    while d % 2 == 0: r += 1; d //= 2\n    for _ in range(k):\n        a = random.randrange(2, n - 1)\n        x = pow(a, d, n)\n        if x in (1, n-1): continue\n        for _ in range(r - 1):\n            x = pow(x, 2, n)\n            if x == n - 1: break\n        else: return False\n    return True\n\ndef gen_prime(bits=16):\n    while True:\n        n = random.getrandbits(bits) | (1 << bits-1) | 1\n        if is_prime(n): return n\n\ndef extended_gcd(a, b):\n    if a == 0: return b, 0, 1\n    g, x, y = extended_gcd(b % a, a)\n    return g, y - (b // a) * x, x\n\nprint("═" * 50)\nprint(" 🛡️ RSA 公钥加密系统 — 原理全透视")\nprint("═" * 50)\n\n# 1. 密钥生成\np, q = gen_prime(24), gen_prime(24)\nwhile q == p: q = gen_prime(24)\nn = p * q                # 公钥模数\nphi = (p-1) * (q-1)      # 欧拉函数\ne = 65537                # 公钥指数\n_, d, _ = extended_gcd(e, phi)\nd = d % phi              # 私钥指数\n\nprint("\\n【1. 银行生成秘钥对】")\nprint(f"  随机素数 p = {p}, q = {q} (绝对保密)")\nprint(f"  向全网公开的【公钥】: (n={n}, e={e})")\nprint(f"  银行自己藏好的【私钥】: d={d}")\n\n# 2. 客户加密\nmsg = 42099\nprint(f"\\n【2. 你给银行发消息】")\nprint(f"  你要汇款的金额 m = {msg}")\nc = pow(msg, e, n)       # 核心加密公式：c = m^e % n\nprint(f"  用银行公钥加密后，网络上传输的密文 c = {c}")\nprint(f"  (黑客即便截获密文 {c}，没有私钥 d 也完全解不开)")\n\n# 3. 银行解密\nprint(f"\\n【3. 银行解密消息】")\ndecrypted = pow(c, d, n) # 核心解密公式：m = c^d % n\nprint(f"  银行用自己的私钥 d 还原消息: {decrypted}")\nprint(f"\\n✅ 还原{'成功' if decrypted == msg else '失败'}！欧拉定理诚不欺我！")\n`
+  }
+];
+
+function renderSnippets() {
+  const list = document.getElementById('snippets-list');
+  list.innerHTML = '';
+  SNIPPETS.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'snippet-item';
+    div.innerHTML = `<div class="snippet-icon">${s.icon}</div><div class="snippet-text"><div class="snippet-name">${s.name}</div><div class="snippet-desc">${s.desc}</div></div><div class="snippet-actions"><span class="snippet-load-btn" title="覆盖当前 Tab">加载</span><span class="snippet-newtab-btn" title="新建 Tab 打开">新建</span></div>`;
+
+    div.querySelector('.snippet-load-btn').onclick = (e) => {
+      e.stopPropagation();
+      const currentCode = (document.getElementById('editor') || {}).value || '';
+      if (currentCode.trim() && currentCode !== s.code) {
+        // 当前 Tab 有内容，二次确认
+        if (!div._confirmPending) {
+          div._confirmPending = true;
+          div.querySelector('.snippet-load-btn').textContent = '确认覆盖';
+          div.querySelector('.snippet-load-btn').style.color = 'var(--red)';
+          div._confirmTimer = setTimeout(() => {
+            div._confirmPending = false;
+            div.querySelector('.snippet-load-btn').textContent = '加载';
+            div.querySelector('.snippet-load-btn').style.color = '';
+          }, 2500);
+          showToast('再次点击「确认覆盖」当前代码');
+          return;
+        }
+        clearTimeout(div._confirmTimer);
+        div._confirmPending = false;
+      }
+      tabs[activeTab].code = s.code;
+      const _edS = document.getElementById('editor'); if(_edS){ _edS.value = s.code; highlightCode(); }
+      closeSnippets();
+      showToast('已加载: ' + s.name);
+    };
+
+    div.querySelector('.snippet-newtab-btn').onclick = (e) => {
+      e.stopPropagation();
+      addTab(s.name.replace(/[^\w\u4e00-\u9fa5]/g, '_') + '.py', s.code);
+      closeSnippets();
+      showToast('已在新标签页打开: ' + s.name);
+    };
+
+    // 点击整行默认走"加载"逻辑（触发 load btn click）
+    div.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('snippet-load-btn') && !e.target.classList.contains('snippet-newtab-btn')) {
+        div.querySelector('.snippet-load-btn').click();
+      }
+    });
+
+    list.appendChild(div);
+  });
+}
+renderSnippets();
+
+function closeSnippets(e) {
+  if (!e || e.target === document.getElementById('snippets-overlay')) {
+    document.getElementById('snippets-overlay').classList.remove('open');
+  }
+}
+function closeSettings(e) {
+  if (!e || e.target === document.getElementById('settings-overlay')) {
+    document.getElementById('settings-overlay').classList.remove('open');
+  }
+}
+document.getElementById('snippet-btn').onclick = () => {
+  document.getElementById('snippets-overlay').classList.add('open');
+};
+document.getElementById('settings-btn').onclick = () => {
+  document.getElementById('settings-overlay').classList.add('open');
+  refreshInstalledPkgs(); // 每次打开设置也刷新一下
+};
+
+// ── Settings ──
+function applyFontSize(v) {
+  const sz = parseInt(v);
+  const ed = document.getElementById('editor');
+  const pre = document.getElementById('highlight-pre');
+  const ln = document.getElementById('line-numbers');
+  const hc = document.getElementById('highlight-code');[ed, pre, ln, hc].forEach(el => { if(el) el.style.fontSize = sz + 'px'; });
+  settings.fontSize = sz; saveSettings();
+}
+
+function applyWordWrap(enabled) {
+  const wrapEl = document.getElementById('code-wrap');
+  if (enabled) wrapEl.classList.add('wrap-mode');
+  else wrapEl.classList.remove('wrap-mode');
+  syncScroll();
+}
+
+function toggleSetting(key) {
+  const map = { 
+    'auto-indent': 'autoIndent', 
+    'clear-before-run': 'clearBeforeRun', 
+    'show-lines': 'showLines',
+    'word-wrap': 'wordWrap'
+  };
+  const k = map[key];
+  settings[k] = !settings[k];
+  saveSettings();
+  
+  document.getElementById(key + '-toggle').classList.toggle('on', settings[k]);
+  
+  if (key === 'show-lines') {
+    const _ln = document.getElementById('line-numbers');
+    if (_ln) _ln.style.display = settings.showLines ? '' : 'none';
+  }
+  if (key === 'word-wrap') {
+    applyWordWrap(settings.wordWrap);
+  }
+}
+
+// ── 包管理器 ──
+async function refreshInstalledPkgs() {
+  const listEl = document.getElementById('installed-pkgs-list');
+  if (!pyodide) return;
+
+  try {
+    // 获取 Python 环境中已载入的核心库和通过 micropip 安装的库
+    const pkgs = await pyodide.runPythonAsync(`
+      import sys, micropip
+      # 获取已安装的库名列表并去重排序
+      installed = sorted(list(set([p.name for p in micropip.list()] + list(sys.modules.keys()))))
+      # 过滤掉内部私有模块和过于琐碎的子模块
+      filtered =[p for p in installed if not p.startswith('_') and '.' not in p and len(p) > 1]
+      ','.join(filtered)
+    `);
+    
+    const pkgArray = pkgs.split(',').filter(p => p);
+    listEl.innerHTML = pkgArray.map(p => `<span class="pkg-tag">${p}</span>`).join('');
+    if (pkgArray.length === 0) listEl.innerHTML = '<span style="font-size:10px;color:var(--text3)">暂无已安装的第三方库</span>';
+  } catch (err) {
+    listEl.innerHTML = '<span style="font-size:10px;color:var(--red)">获取列表失败</span>';
+  }
+}
+
+async function installPackageManual() {
+  const input = document.getElementById('pkg-input');
+  const btn = document.getElementById('pkg-install-btn');
+  const pkgName = input.value.trim();
+  
+  if (!pkgName) { showToast('请输入包名'); return; }
+  if (!pyodide) { showToast('Python 尚未就绪'); return; }
+
+  input.disabled = true;
+  btn.textContent = '安装中...';
+  btn.style.opacity = '0.6';
+
+  appendOutput(`\n📦 正在手动安装包: ${pkgName}...\n`, 'info');
+
+  try {
+    try {
+      await pyodide.loadPackage(pkgName);
+      appendOutput(`✓ ${pkgName} 已通过官方库成功安装\n`, 'success');
+    } catch (_) {
+      // 使用 globals.set 传参，避免字符串拼接注入风险
+      pyodide.globals.set('_manual_pkg', pkgName);
+      await pyodide.runPythonAsync(`import micropip; await micropip.install(_manual_pkg)`);
+      pyodide.globals.delete('_manual_pkg');
+      appendOutput(`✓ ${pkgName} 已从 PyPI 成功安装\n`, 'success');
+    }
+    showToast(`✓ 安装成功: ${pkgName}`);
+    input.value = '';
+    refreshInstalledPkgs(); // 安装成功后刷新列表
+  } catch (err) {
+    appendOutput(`✗ 安装失败: ${err.message}\n`, 'stderr');
+    showToast('安装失败，请检查包名或网络');
+  } finally {
+    input.disabled = false;
+    btn.textContent = '安装';
+    btn.style.opacity = '1';
+  }
+}
+
+// ── 本地文件导入 ──
+function triggerImport() {
+  document.getElementById('file-input').click();
+}
+
+function importFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    const code = ev.target.result;
+    const name = file.name || 'imported.py';
+    addTab(name, code);
+    showToast(`✓ 已导入文件: ${name}`);
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// ══════════════════════════════════════════════
+// ── 功能一：运行历史 ──
+// ══════════════════════════════════════════════
+const MAX_HISTORY = 5;
+let _runHistory = [];    // [{html, lineCount, timestamp}]
+let _historyIdx = -1;    // 当前查看的位置，-1 = 最新
+
+function _saveOutputSnapshot() {
+  const el = document.getElementById('output-content');
+  const lc = _outputLineCount;
+  const snapshot = { html: el.innerHTML, lineCount: lc, ts: Date.now() };
+  _runHistory.push(snapshot);
+  if (_runHistory.length > MAX_HISTORY) _runHistory.shift();
+  _historyIdx = _runHistory.length - 1; // 指向最新
+  _updateHistoryUI();
+}
+
+function _updateHistoryUI() {
+  const nav = document.getElementById('history-nav');
+  const label = document.getElementById('history-label');
+  const prev = document.getElementById('hist-prev');
+  const next = document.getElementById('hist-next');
+  const n = _runHistory.length;
+  if (n <= 1) { nav.classList.remove('visible'); return; }
+  nav.classList.add('visible');
+  const cur = _historyIdx + 1;
+  label.textContent = `${cur}/${n}`;
+  prev.disabled = _historyIdx <= 0;
+  next.disabled = _historyIdx >= n - 1;
+}
+
+function navHistory(dir) {
+  const n = _runHistory.length;
+  const newIdx = Math.max(0, Math.min(n - 1, _historyIdx + dir));
+  if (newIdx === _historyIdx) return;
+  _historyIdx = newIdx;
+  const snap = _runHistory[_historyIdx];
+  const el = document.getElementById('output-content');
+  el.innerHTML = snap.html;
+  _outputLineCount = snap.lineCount;
+  const lc = document.getElementById('output-linecount');
+  if (lc) lc.textContent = snap.lineCount > 0 ? snap.lineCount + ' 行' : '';
+  _updateHistoryUI();
+  // 显示时间戳提示
+  const ago = Math.round((Date.now() - snap.ts) / 1000);
+  const agoStr = ago < 60 ? `${ago}秒前` : ago < 3600 ? `${Math.round(ago/60)}分钟前` : `${Math.round(ago/3600)}小时前`;
+  showToast(`查看第 ${_historyIdx+1} 次运行结果（${agoStr}）`);
+}
+
+// ══════════════════════════════════════════════
+// ── 功能二：代码格式化 (autopep8) ──
+// ══════════════════════════════════════════════
+let _autopep8Ready = false;
+let _autopep8Loading = false;
+
+async function formatCode() {
+  if (!pyodide) { showToast('Python 尚未就绪'); return; }
+  const ed = document.getElementById('editor');
+  if (!ed || !ed.value.trim()) { showToast('代码为空'); return; }
+
+  const btn = document.getElementById('format-btn');
+  const statusDot = document.getElementById('format-status');
+
+  // 首次使用时安装 autopep8
+  if (!_autopep8Ready) {
+    if (_autopep8Loading) { showToast('autopep8 正在安装中...'); return; }
+    _autopep8Loading = true;
+    btn.style.opacity = '0.5';
+    btn.style.pointerEvents = 'none';
+    showToast('⏳ 正在安装 autopep8...');
+    try {
+      pyodide.globals.set('_fmt_pkg', 'autopep8');
+      await pyodide.runPythonAsync(`import micropip; await micropip.install(_fmt_pkg)`);
+      pyodide.globals.delete('_fmt_pkg');
+      _autopep8Ready = true;
+      statusDot.style.display = 'block';
+    } catch(e) {
+      showToast('autopep8 安装失败，请检查网络');
+      _autopep8Loading = false;
+      btn.style.opacity = '';
+      btn.style.pointerEvents = '';
+      return;
+    }
+    _autopep8Loading = false;
+    btn.style.opacity = '';
+    btn.style.pointerEvents = '';
+  }
+
+  // 执行格式化
+  const original = ed.value;
+  try {
+    btn.style.opacity = '0.6';
+    pyodide.globals.set('_fmt_code', original);
+    const formatted = await pyodide.runPythonAsync(
+      `import autopep8; autopep8.fix_code(_fmt_code, options={'aggressive': 1})`
+    );
+    pyodide.globals.delete('_fmt_code');
+    if (formatted === original) {
+      showToast('代码已是规范格式 ✓');
+    } else {
+      ed.value = formatted;
+      if (tabs[activeTab]) tabs[activeTab].code = formatted;
+      highlightCode();
+      debounceSaveState();
+      showToast('✓ 格式化完成');
+    }
+  } catch(e) {
+    showToast('格式化失败: ' + (e.message || e));
+  } finally {
+    btn.style.opacity = '';
+  }
+}
+
+// ══════════════════════════════════════════════
+// ── 功能三：变量检查器 ──
+// ══════════════════════════════════════════════
+let _varsPanelOpen = false;
+let _currentVars = [];
+
+async function copyVars(event) {
+  if (event) event.stopPropagation();
+  if (!_currentVars || _currentVars.length === 0) {
+    showToast('没有可复制的变量');
+    return;
+  }
+  let text = "=== PyRunner 变量运行状态 ===\n\n";
+  _currentVars.forEach(v => {
+    text += `${v.name} [${v.type}] = ${v.value}\n`;
+  });
+  const ok = await smartCopy(text);
+  if (ok) {
+    flashCopyBtn('copy-vars-btn');
+    showToast('已复制变量列表 ✓');
+  } else {
+    showToast('复制失败，请重试');
+  }
+}
+
+function toggleVarsPanel() {
+  _varsPanelOpen = !_varsPanelOpen;
+  const panel = document.getElementById('vars-panel');
+  panel.classList.toggle('open', _varsPanelOpen);
+}
+
+async function refreshVarsPanel() {
+  if (!pyodide) return;
+  const grid = document.getElementById('vars-grid');
+  const countEl = document.getElementById('vars-count');
+  try {
+    // 用 Python 扫描 __main__ 中的用户变量，返回 JSON
+    const result = await pyodide.runPythonAsync(`
+import __main__, json, types
+
+_SKIP_TYPES = (types.ModuleType, types.FunctionType, types.BuiltinFunctionType,
+               types.BuiltinMethodType, type, types.MethodType)
+_SKIP_PREFIXES = ('_', '__')
+
+def _fmt_val(v):
+    try:
+        import numpy as _np
+        if isinstance(v, _np.ndarray):
+            return f'shape={v.shape} dtype={v.dtype}'
+    except: pass
+    try:
+        import pandas as _pd
+        if isinstance(v, _pd.DataFrame): return f'{len(v)} 行 × {len(v.columns)} 列'
+        if isinstance(v, _pd.Series): return f'Series len={len(v)}'
+    except: pass
+    if isinstance(v, (list, tuple)):
+        return f'len={len(v)}'
+    if isinstance(v, dict):
+        return f'{len(v)} keys'
+    s = repr(v)
+    return s[:60] + '…' if len(s) > 60 else s
+
+def _type_label(v):
+    try:
+        import numpy as _np
+        if isinstance(v, _np.ndarray): return 'ndarray'
+    except: pass
+    try:
+        import pandas as _pd
+        if isinstance(v, _pd.DataFrame): return 'DataFrame'
+        if isinstance(v, _pd.Series): return 'Series'
+    except: pass
+    return type(v).__name__
+
+rows = []
+for k, v in vars(__main__).items():
+    if k.startswith('_'): continue
+    if isinstance(v, _SKIP_TYPES): continue
+    rows.append({'name': k, 'type': _type_label(v), 'value': _fmt_val(v)})
+
+json.dumps(rows[:40])
+`);
+
+    const vars = JSON.parse(result);
+    _currentVars = vars;
+    countEl.textContent = vars.length;
+    countEl.classList.toggle('visible', vars.length > 0);
+    
+    const copyBtn = document.getElementById('copy-vars-btn');
+    if (copyBtn) copyBtn.style.display = vars.length > 0 ? 'flex' : 'none';
+
+    if (vars.length === 0) {
+      grid.innerHTML = '<div class="var-empty">运行后变量将显示在这里</div>';
+      return;
+    }
+
+    grid.innerHTML = vars.map(v => `
+      <div class="var-row">
+        <span class="var-name">${escHtml(v.name)}</span>
+        <span class="var-type">${escHtml(v.type)}</span>
+        <span class="var-value">${escHtml(v.value)}</span>
+      </div>`).join('');
+
+    // 不再自动展开，仅控制“标题栏”是否在底部安静地显示
+    const panel = document.getElementById('vars-panel');
+    if (vars.length > 0) {
+      panel.classList.add('has-vars');
+    } else {
+      panel.classList.remove('has-vars');
+      _varsPanelOpen = false;
+      panel.classList.remove('open');
+    }
+  } catch(e) {
+    grid.innerHTML = '<div class="var-empty">无法读取变量</div>';
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── 复制工具 ──
+async function smartCopy(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (_) {}
+  document.body.removeChild(ta);
+  return ok;
+}
+
+function flashCopyBtn(id) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px"><path d="M20 6L9 17l-5-5"/></svg>';
+  btn.style.color = 'var(--green)';
+  setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1400);
+}
+
+async function copyOutput() {
+  const text = document.getElementById('output-content').textContent.trim();
+  if (!text) { showToast('输出为空'); return; }
+  const ok = await smartCopy(text);
+  if (ok) { flashCopyBtn('copy-output-btn'); showToast('已复制输出内容 \u2713'); }
+  else showToast('复制失败，请手动选择文本');
+}
+
+function clearEditor() {
+  const _edCl = document.getElementById('editor'); if (!_edCl || !_edCl.value.trim()) return;
+  const btn = document.getElementById('clear-editor-btn');
+  if (btn._confirmPending) {
+    clearTimeout(btn._confirmTimer);
+    btn._confirmPending = false;
+    btn.style.color = '';
+    btn.title = '清空编辑器';
+    tabs[activeTab].code = '';
+    const _edC = document.getElementById('editor'); if(_edC){ _edC.value = ''; highlightCode(); }
+    clearErrorHighlight();
+    debounceSaveState();
+    showToast('已清空');
+  } else {
+    btn._confirmPending = true;
+    btn.style.color = 'var(--red)';
+    btn.title = '再次点击确认清空';
+    showToast('再次点击确认清空');
+    btn._confirmTimer = setTimeout(() => {
+      btn._confirmPending = false;
+      btn.style.color = '';
+      btn.title = '清空编辑器';
+    }, 2500);
+  }
+}
+
+async function copyCode() {
+  const text = (document.getElementById('editor') || {}).value || '';
+  if (!text.trim()) { showToast('代码为空'); return; }
+  const ok = await smartCopy(text);
+  if (ok) { flashCopyBtn('copy-code-btn'); showToast('已复制代码 \u2713'); }
+  else showToast('复制失败，请手动选择文本');
+}
+
+function downloadCode() {
+  const code = (document.getElementById('editor') || {}).value || '';
+  if (!code.trim()) { 
+    showToast('代码为空，无法导出'); 
+    return; 
+  }
+  let filename = tabs[activeTab].name || 'script.py';
+  if (!filename.endsWith('.py')) {
+    filename += '.py';
+  }
+  const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`✅ 已导出: ${filename}`);
+}
+
+// ── 应用设置 ──
+(function() {
+  applyFontSize(settings.fontSize || 13);
+  document.getElementById('font-size-select').value = settings.fontSize || 13;
+  
+  if (!settings.showLines) {
+    const _ln2 = document.getElementById('line-numbers');
+    if(_ln2) _ln2.style.display = 'none';
+    document.getElementById('show-lines-toggle').classList.remove('on');
+  }
+  
+  if (settings.wordWrap) {
+    document.getElementById('word-wrap-toggle').classList.add('on');
+    applyWordWrap(true);
+  }
+
+  if (!settings.autoIndent) document.getElementById('auto-indent-toggle').classList.remove('on');
+  if (!settings.clearBeforeRun) document.getElementById('clear-before-run-toggle').classList.remove('on');
+})();
+
+// ── Start ──
+renderTabs(); // 页面初始化时立即渲染所有恢复的 Tab（修复刷新后只显示一个的 bug）
+initPyodide();

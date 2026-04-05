@@ -1,147 +1,111 @@
 # PyRunner 🐍
 
-一个运行在浏览器里的完整 Python 3.11 环境，无需安装，无需服务器，打开即用。
+一个纯前端的 Python 运行平台（PWA），打开网页即可运行 Python、绘图、查看变量、管理标签页，无需后端服务。
 
-基于 [Pyodide](https://pyodide.org/) 构建，单文件部署，支持 PWA 安装到桌面。
+> 当前版本已经从「单文件」重构为「模块化静态架构」：`index.html` 仅保留结构层，样式与行为拆分到独立模块文件。
 
 ---
 
-## 特性
+## 最新架构（模块化）
 
-**编辑器**
-- 实时语法高亮（PrismJS）
-- 行号显示，错误行红色高亮定位
-- 自动缩进、括号/引号自动配对
-- 多标签页，支持同时编辑多个文件
-- 标签页内容持久化（刷新不丢失）
-- 字体大小、折行、行号等可配置
-- 导入 `.py` 文件 / 导出 `.py` 文件
-- 代码格式化（autopep8，首次使用自动安装）
+```text
+.
+├── index.html             # 视图骨架（UI 结构）
+├── styles/
+│   └── main.css           # 全量样式模块
+├── js/
+│   ├── app-core.js        # 编辑器 / 运行器 / 输出 / 设置 / 片段等核心逻辑
+│   └── pwa.js             # Service Worker 注册 + 安装提示 + 离开页持久化
+├── sw.js                  # 离线缓存策略（已纳入新模块资源）
+├── manifest.json          # PWA 清单
+└── icons/
+```
 
-**运行环境**
-- Python 3.11，完整标准库
-- 快捷键 `Ctrl/Cmd + Enter` 运行
-- 支持 `input()` —— 弹出原生输入框，无需 `await`
-- 运行历史，可在多次输出之间导航
-- 变量检查器，运行后自动展示命名空间
-- 自动检测 `import` 语句，未预装的包自动通过 micropip 安装
+### 模块职责说明
 
-**可视化输出**
-- Matplotlib 图表直接渲染在输出区域
-- Plotly 交互式图表（可拖拽/缩放）
-- Pandas DataFrame / Series 渲染为 HTML 表格
-- PIL Image、NumPy 图像数组自动转图片显示
-- 支持图片点击放大
+- **结构模块（HTML）**：负责语义结构与组件容器，不再承载大段样式和业务脚本。
+- **样式模块（CSS）**：集中管理主题变量、响应式布局、编辑器/输出面板视觉层。
+- **运行模块（app-core.js）**：
+  - Pyodide 初始化与依赖预加载
+  - 代码编辑与语法高亮
+  - 运行控制（运行/停止/输入）
+  - 输出渲染（文本、图片、图表、DataFrame）
+  - 状态持久化（标签页、设置）
+  - 代码片段、变量面板、格式化、包管理
+- **PWA 模块（pwa.js）**：
+  - 页面关闭前强制保存
+  - Service Worker 生命周期接入
+  - 安装到桌面提示与触发
 
-**预装库**
+---
 
-| 类别 | 库 |
-|------|----|
-| 数值计算 | NumPy, SciPy |
-| 数据分析 | Pandas, Statsmodels |
-| 可视化 | Matplotlib, Seaborn, Plotly, Pillow |
-| 机器学习 | Scikit-learn |
-| 符号计算 | SymPy |
-| 网络分析 | NetworkX |
-| 网络请求 | pyodide-http |
+## 功能特性
 
-中文字体（Noto Sans SC）随环境一起加载，图表中文无乱码。
+### 代码编辑
+- Python 高亮（PrismJS）
+- 多标签页编辑与持久化
+- 自动缩进、可选行号、字号调整、自动折行
+- 导入 / 导出 `.py`
+- 一键格式化（`autopep8`，首次按需安装）
 
-**其他**
-- 深色 / 浅色主题自动跟随系统
-- PWA 支持，可安装到桌面离线使用
-- 移动端适配，软键盘弹起自动调整布局
+### 运行能力
+- 基于 **Pyodide 0.26.1** 的浏览器 Python 运行时
+- 支持 `input()` 交互输入
+- `Ctrl/Cmd + Enter` 快速运行
+- 自动检测 `import` 并尝试安装缺失依赖（`loadPackage` / `micropip`）
+- 运行历史回看（最近多次输出快照）
+- 变量检查器（运行后查看命名空间）
+
+### 输出可视化
+- Matplotlib 图像自动渲染
+- Plotly 交互式图表输出
+- Pandas DataFrame / Series 表格渲染
+- PIL / NumPy 图像对象自动可视化
+
+### PWA 与离线
+- 支持安装到桌面（`beforeinstallprompt`）
 - Service Worker 离线缓存
+- 主题自动跟随系统深浅色
 
 ---
 
-## 快速开始
-
-PyRunner 是纯静态单页应用，部署只需要将以下文件放到任意静态托管服务：
-
-```
-index.html
-manifest.json
-sw.js
-favicon.png
-icons/
-  icon-192.png
-  icon-512.png
-```
-
-本地预览（需要 HTTPS 或 localhost，Service Worker 限制）：
+## 快速启动
 
 ```bash
-# Python
+# Python 静态服务
 python -m http.server 8080
 
-# Node
+# 或 Node 静态服务
 npx serve .
 ```
 
-然后访问 `http://localhost:8080` 即可。
+访问：`http://localhost:8080`
+
+> 注意：Service Worker 仅在 `localhost` 或 HTTPS 下生效。
 
 ---
 
-## 使用说明
+## 缓存策略（sw.js）
 
-### input() 的正确用法
+- **App Shell（本地资源）**：缓存优先
+- **CDN 资源（Pyodide / 字体等）**：网络优先 + 缓存兜底
+- **其他 API 请求**：直连网络，不缓存
 
-PyRunner 的 `input()` 是异步实现的。在代码中直接调用即可，会弹出底部输入框：
-
-```python
-name = input("你叫什么名字？")
-print(f"你好，{name}！")
-```
-
-如果需要在 `async` 函数中使用，加上 `await`：
-
-```python
-name = await input("你叫什么名字？")
-```
-
-### 安装第三方包
-
-运行时直接 import，环境会自动尝试安装：
-
-```python
-import requests   # 自动安装
-```
-
-也可以在设置面板的包管理器里手动安装。注意：含 C 扩展的包（如 `lxml`、`opencv-python`）无法在 Pyodide 环境中安装。
-
-### 代码格式化
-
-工具栏中的格式化按钮使用 autopep8，首次点击会自动安装（需要网络），之后离线可用。
-
----
-
-## 技术栈
-
-| 组件 | 说明 |
-|------|------|
-| [Pyodide 0.25.0](https://pyodide.org/) | WebAssembly Python 运行时 |
-| [PrismJS 1.29](https://prismjs.com/) | 语法高亮 |
-| [Plotly.js](https://plotly.com/javascript/) | 交互式图表（按需加载） |
-| Sora + JetBrains Mono | UI 字体 |
-
-无框架，无构建工具，原生 HTML / CSS / JS。
+当前 App Shell 已覆盖模块化资源：
+- `./index.html`
+- `./styles/main.css`
+- `./js/app-core.js`
+- `./js/pwa.js`
+- `./manifest.json`
+- 图标与 favicon
 
 ---
 
 ## 已知限制
 
-- 首次加载需要下载 Pyodide 运行时及预装库（约 30–60 秒，视网络而定），之后 Service Worker 缓存加速
-- 不支持多线程（`threading` 模块受 WebAssembly 限制）
-- 不支持含 C 扩展的 PyPI 包
-- `time.sleep()` 会阻塞主线程，长时间 sleep 会导致页面无响应
-- 文件系统为内存文件系统，刷新后清空（代码通过 localStorage 持久化，文件不行）
-
----
-
-## 彩蛋
-
-环境里藏了一些东西。如果你足够好奇，`os.listdir('/')` 是个不错的起点。
+- 首次加载需下载 Pyodide 与相关包，耗时受网络影响
+- WebAssembly 环境下对部分 C 扩展包支持有限
+- 长时间阻塞代码（如大量同步计算或 `time.sleep`）会影响页面响应
 
 ---
 
