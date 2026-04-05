@@ -1425,6 +1425,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       setTimeout(() => { document.getElementById('loading-overlay').style.display = 'none'; }, 400);
       refreshInstalledPkgs(); // 初始加载完成后获取列表
       initOutputScrollListener(); // 启动输出智能滚动监听
+      ensureOutputInteractionDelegate();
     }, 300);
   } catch(e) {
     setStatus('error', '加载失败');
@@ -1805,6 +1806,8 @@ mpl.rcParams['axes.unicode_minus'] = False
         figData.layout.autosize = true;
         figData.layout.font = Object.assign({ family:'Sora,system-ui,sans-serif', size:12 }, figData.layout.font||{});
         const wrap = document.createElement('div');
+        wrap.className = 'plotly-out';
+        wrap.dataset.plotlyJson = encodeURIComponent(pjson);
         wrap.style.cssText = 'width:100%;height:420px;border-radius:10px;overflow:hidden;border:1px solid var(--border);margin:10px 0;background:var(--surface);';
         outputEl.appendChild(wrap);
         await new Promise(r => requestAnimationFrame(r));
@@ -1837,25 +1840,7 @@ mpl.rcParams['axes.unicode_minus'] = False
       img.style.cssText = 'max-width:100%;border-radius:10px;border:1px solid var(--border);margin:10px 0;display:block;cursor:zoom-in;';
       img.onerror = () => img.remove();
       img.src = `data:image/${mime};base64,${b64}`;
-      img.onclick = () => {
-        const ov = document.createElement('div');
-        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
-        const bi = document.createElement('img');
-        bi.src = img.src;
-        bi.style.cssText = 'max-width:100%;max-height:90dvh;border-radius:10px;';
-        const tip = document.createElement('div');
-        tip.textContent = '点击任意处或按 Esc 关闭';
-        tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;white-space:nowrap;';
-        ov.append(bi, tip);
-        const closeOv = () => {
-          ov.remove();
-          document.removeEventListener('keydown', escHandler);
-        };
-        const escHandler = (ev) => { if (ev.key === 'Escape') closeOv(); };
-        ov.onclick = closeOv;
-        document.addEventListener('keydown', escHandler);
-        document.body.appendChild(ov);
-      };
+      img.dataset.previewable = '1';
       const wrap2 = document.createElement('span');
       wrap2.className = 'out-line image-out';
       wrap2.appendChild(img);
@@ -1911,6 +1896,67 @@ mpl.rcParams['axes.unicode_minus'] = False
 let _outputRaf = null;
 let _outputLineCount = 0; // 计数器替代 querySelectorAll，避免密集输出时频繁 DOM 查询
 let _userScrolledUp = false; // 用户主动上滚时暂停自动跟随
+
+function openImagePreview(src) {
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px;';
+  const bi = document.createElement('img');
+  bi.src = src;
+  bi.style.cssText = 'max-width:100%;max-height:90dvh;border-radius:10px;';
+  const tip = document.createElement('div');
+  tip.textContent = '点击任意处或按 Esc 关闭';
+  tip.style.cssText = 'position:absolute;bottom:24px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.5);font-size:12px;white-space:nowrap;';
+  ov.append(bi, tip);
+  const closeOv = () => {
+    ov.remove();
+    document.removeEventListener('keydown', escHandler);
+  };
+  const escHandler = (ev) => { if (ev.key === 'Escape') closeOv(); };
+  ov.onclick = closeOv;
+  document.addEventListener('keydown', escHandler);
+  document.body.appendChild(ov);
+}
+
+function ensureOutputInteractionDelegate() {
+  const root = document.getElementById('output-content');
+  if (!root || root._interactionBound) return;
+  root._interactionBound = true;
+  root.addEventListener('click', (e) => {
+    const img = e.target.closest('img[data-previewable="1"]');
+    if (!img || !root.contains(img)) return;
+    openImagePreview(img.src);
+  });
+}
+
+async function ensurePlotlyLoaded() {
+  if (window.Plotly) return;
+  await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.32.0/plotly.min.js';
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function rehydrateOutputInteractiveBlocks() {
+  const plots = [...document.querySelectorAll('.plotly-out[data-plotly-json]')];
+  if (plots.length === 0) return;
+  try {
+    await ensurePlotlyLoaded();
+    for (const plotEl of plots) {
+      const raw = plotEl.dataset.plotlyJson;
+      if (!raw) continue;
+      const figData = JSON.parse(decodeURIComponent(raw));
+      await Plotly.react(plotEl, figData.data, figData.layout || {}, {
+        responsive: true, displayModeBar: true,
+        modeBarButtonsToRemove:['sendDataToCloud','editInChartStudio','lasso2d','select2d'],
+        displaylogo: false
+      });
+    }
+  } catch (err) {
+    console.warn('历史 Plotly 重建失败:', err);
+  }
+}
 
 // 监听用户在输出区域的滚动行为
 function initOutputScrollListener() {
@@ -2649,6 +2695,8 @@ function navHistory(dir) {
   const el = document.getElementById('output-content');
   el.innerHTML = snap.html;
   _outputLineCount = snap.lineCount;
+  ensureOutputInteractionDelegate();
+  rehydrateOutputInteractiveBlocks();
   const lc = document.getElementById('output-linecount');
   if (lc) lc.textContent = snap.lineCount > 0 ? snap.lineCount + ' 行' : '';
   _updateHistoryUI();
@@ -2760,7 +2808,8 @@ async function refreshVarsPanel() {
   try {
     // 用 Python 扫描 __main__ 中的用户变量，返回 JSON
     const result = await pyodide.runPythonAsync(`
-import __main__, json, types
+import __main__, json, types, warnings, sys
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 _SKIP_TYPES = (types.ModuleType, types.FunctionType, types.BuiltinFunctionType,
                types.BuiltinMethodType, type, types.MethodType)
@@ -2772,11 +2821,12 @@ def _fmt_val(v):
         if isinstance(v, _np.ndarray):
             return f'shape={v.shape} dtype={v.dtype}'
     except: pass
-    try:
-        import pandas as _pd
-        if isinstance(v, _pd.DataFrame): return f'{len(v)} 行 × {len(v.columns)} 列'
-        if isinstance(v, _pd.Series): return f'Series len={len(v)}'
-    except: pass
+    _pd = sys.modules.get('pandas')
+    if _pd is not None:
+        try:
+            if isinstance(v, _pd.DataFrame): return f'{len(v)} 行 × {len(v.columns)} 列'
+            if isinstance(v, _pd.Series): return f'Series len={len(v)}'
+        except: pass
     if isinstance(v, (list, tuple)):
         return f'len={len(v)}'
     if isinstance(v, dict):
@@ -2789,15 +2839,22 @@ def _type_label(v):
         import numpy as _np
         if isinstance(v, _np.ndarray): return 'ndarray'
     except: pass
-    try:
-        import pandas as _pd
-        if isinstance(v, _pd.DataFrame): return 'DataFrame'
-        if isinstance(v, _pd.Series): return 'Series'
-    except: pass
+    _pd = sys.modules.get('pandas')
+    if _pd is not None:
+        try:
+            if isinstance(v, _pd.DataFrame): return 'DataFrame'
+            if isinstance(v, _pd.Series): return 'Series'
+        except: pass
     return type(v).__name__
 
 rows = []
-for k, v in list(dict(vars(__main__)).items()):
+for _ in range(4):
+    try:
+        _items = list(__main__.__dict__.copy().items())
+        break
+    except RuntimeError:
+        _items = []
+for k, v in _items:
     if k.startswith('_'): continue
     if isinstance(v, _SKIP_TYPES): continue
     rows.append({'name': k, 'type': _type_label(v), 'value': _fmt_val(v)})
