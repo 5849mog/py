@@ -83,6 +83,21 @@ npx serve .
 
 ---
 
+## 单文件模块化架构（v2）
+
+项目仍然保持 **单文件部署**，但内部 JavaScript 已重构为“模块化分层”：
+
+- `AppCore.state`：集中管理共享状态（运行状态、当前 Tab、Pyodide 实例、延迟保存计时器等）
+- `AppCore.constants`：集中管理默认配置等常量
+- `AppCore.dom`：统一 DOM 访问入口（减少散落的 `getElementById`）
+- `AppCore.modules.settings`：负责设置读取与持久化
+- `AppCore.modules.persistence`：负责编辑器状态与 Tab 状态持久化 + 防抖保存
+- `AppCore.modules.pwa`：负责 Service Worker 注册与 PWA 安装流程
+
+这种方式仍然是一个 `index.html`，但已经具备“按职责拆分”的模块边界，后续扩展时可以继续在 `AppCore.modules.*` 下增量演进，而不是把所有逻辑堆在全局作用域中。
+
+---
+
 ## 使用说明
 
 ### input() 的正确用法
@@ -120,7 +135,7 @@ import requests   # 自动安装
 
 | 组件 | 说明 |
 |------|------|
-| [Pyodide 0.25.0](https://pyodide.org/) | WebAssembly Python 运行时 |
+| [Pyodide 0.26.1](https://pyodide.org/) | WebAssembly Python 运行时 |
 | [PrismJS 1.29](https://prismjs.com/) | 语法高亮 |
 | [Plotly.js](https://plotly.com/javascript/) | 交互式图表（按需加载） |
 | Sora + JetBrains Mono | UI 字体 |
