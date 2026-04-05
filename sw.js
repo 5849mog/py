@@ -1,20 +1,21 @@
 // PyRunner Service Worker
 // 缓存策略：Shell 文件强缓存，Pyodide/CDN 资源网络优先
 
-const VERSION = 'pyrunner-v2';
+const VERSION = 'v3';
 
 // 需要预缓存的本地文件（App Shell）
-const SHELL_CACHE = 'pyrunner-shell-v2';
+const SHELL_CACHE = `pyrunner-shell-${VERSION}`;
 const SHELL_FILES = [
+  './',
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
-  './favicon.png',
+  './sw.js',
 ];
 
 // CDN 资源缓存（Pyodide 等大文件，网络优先 + 缓存兜底）
-const CDN_CACHE = 'pyrunner-cdn-v2';
+const CDN_CACHE = `pyrunner-cdn-${VERSION}`;
 const CDN_HOSTS = [
   'cdn.jsdelivr.net',
   'fonts.googleapis.com',
